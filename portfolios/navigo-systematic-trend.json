@@ -27,8 +27,10 @@
     "TILT": {"name": "EM Tilt", "key": null, "alloc": 0.0, "alloc_tilt": 0.10, "color": "#0891b2", "desc": "EEM/SPY golden-cross tilt of 10% NAV, funded from sleeve B. Weak-evidence positional bet, not robust alpha."}
   },
   "benchmarks": {
-    "SPY": {"name": "S&P 500", "label": "S&P 500 (SPY)", "type": "yfinance", "ticker": "SPY", "color": "#8a8a82"},
-    "BAL6040": {"name": "60/40", "label": "60/40 (SPY/IEF)", "type": "blend", "components": {"SPY": 0.6, "IEF": 0.4}, "color": "#b0b0a8"}
+    "SPY": {"name": "S&P 500", "label": "S&P 500", "type": "yfinance", "ticker": "SPY", "color": "#8a8a82", "default": true},
+    "ACWI": {"name": "MSCI ACWI", "label": "MSCI ACWI", "type": "yfinance", "ticker": "ACWI", "color": "#2563eb"},
+    "BAL6040": {"name": "60/40", "label": "60/40 (SPY/IEF)", "type": "blend", "components": {"SPY": 0.6, "IEF": 0.4}, "color": "#b0b0a8"},
+    "AOR": {"name": "Global 60/40", "label": "Global 60/40 (AOR)", "type": "yfinance", "ticker": "AOR", "color": "#be185d"}
   },
   "freshness": {
     "price_bdays": 4,

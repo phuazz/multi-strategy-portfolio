@@ -154,7 +154,7 @@ a{color:var(--b);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-navigo-systematic-trend.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'etf', attrGroup:'etf' };
+const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'etf', attrGroup:'etf', benchmarks:null };
 
 const TABS = [
   ['overview','Overview'], ['allocation','Allocation'], ['performance','Performance'],
@@ -200,6 +200,8 @@ async function bootstrap(){
        Run <code>python scripts/pipeline.py</code> then serve from the project root or <code>docs/</code>.</div>`;
     return;
   }
+  state.benchmarks = Object.keys(DS.equity.benchmarks||{}).filter(k=>DS.equity.benchmarks[k].default);
+  if(!state.benchmarks.length) state.benchmarks=['SPY'];
   renderMasthead(); renderKPIs(); renderStaleBanner(); renderTabBar(); renderFooter(); renderTab();
 }
 
@@ -277,7 +279,7 @@ function cumFrom(arr, i0){ const base=arr[i0]; return arr.map((v,i)=> i<i0?null 
 function ddFrom(arr, i0){ let peak=-Infinity; return arr.map((v,i)=>{ if(i<i0) return null; peak=Math.max(peak,v); return v/peak-1; }); }
 
 function buildEquityChart(elId, opt){
-  opt=opt||{}; const eq=DS.equity, win=opt.window||'SI', log=!!opt.log;
+  opt=opt||{}; state._eqCfg={elId, opt}; const eq=DS.equity, win=opt.window||'SI', log=!!opt.log;
   let dates=eq.dates.slice(), model=eq.model.slice();
   if(eq.live && opt.showLive!==false){ dates=dates.concat(eq.live.dates); model=model.concat(eq.live.equity); }
   const i0=sliceWindow(dates,win), startDate=dates[i0], endDate=dates[dates.length-1], base=model[i0];
@@ -294,10 +296,10 @@ function buildEquityChart(elId, opt){
       hovertemplate:'%{x|%-d %b %Y}<br><b>Live MTM</b> %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
   }
   if(opt.showBenchmarks!==false){
-    [['SPY','#8a8a82'],['BAL6040','#b0b0a8']].forEach(([k,col])=>{ const bm=eq.benchmarks[k]; if(!bm) return;
+    (state.benchmarks||['SPY']).forEach(k=>{ const bm=eq.benchmarks[k]; if(!bm) return;
       let i0b=bm.dates.findIndex(d=> d>=startDate); if(i0b<0) i0b=0; const bbase=bm.equity[i0b];
-      traces.push({type:'scatter',mode:'lines',name:k,x:bm.dates,y:bm.equity.map((v,i)=> i<i0b?null:cum(v,bbase)),line:{color:col,width:1.3},
-        hovertemplate:'%{x|%-d %b %Y}<br>'+k+' %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
+      traces.push({type:'scatter',mode:'lines',name:bm.label||k,x:bm.dates,y:bm.equity.map((v,i)=> i<i0b?null:cum(v,bbase)),line:{color:bm.color||'#8a8a82',width:1.3},
+        hovertemplate:'%{x|%-d %b %Y}<br>'+(bm.label||k)+' %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
     });
   }
   const layoutExtra={ showlegend:true, legend:{orientation:'h',x:0,y:1.09,font:{size:11}},
@@ -329,6 +331,16 @@ function buildEquityChart(elId, opt){
   if(anns.length) layoutExtra.annotations=anns;
   plot(document.getElementById(elId), traces, baseLayout(layoutExtra));
 }
+function benchChips(){
+  const bms=DS.equity.benchmarks||{};
+  return Object.keys(bms).map(k=>`<button class="fbtn ${(state.benchmarks||[]).includes(k)?'active':''}" onclick="toggleBench('${k}')"><span class="dot" style="background:${bms[k].color||'#8a8a82'}"></span>${esc(bms[k].label||k)}</button>`).join('');
+}
+function toggleBench(k){
+  state.benchmarks=state.benchmarks||[];
+  const i=state.benchmarks.indexOf(k); if(i>=0) state.benchmarks.splice(i,1); else state.benchmarks.push(k);
+  const sel=document.getElementById('benchSel'); if(sel) sel.innerHTML=benchChips();
+  if(state._eqCfg) buildEquityChart(state._eqCfg.elId, state._eqCfg.opt);
+}
 
 /* ============================ donut ============================ */
 function buildDonut(elId, mapping, colorFn, centerTxt){
@@ -359,6 +371,7 @@ function renderOverview(){
         <div class="card-title">Model vs benchmarks — cumulative return (rebased to window)</div>
         <div id="ovWinBtns"></div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:11px">Benchmarks</span><span id="benchSel" style="display:inline-flex;gap:6px;flex-wrap:wrap"></span></div>
       <div id="ovEquity" class="chart" style="height:360px"></div>
       <div class="card-note" style="margin-top:8px">Green solid = deployed model (breadth de-risk gate + EM tilt). Dotted = live mark-to-market this week. Red bands = risk-off periods; red shaded area = model drawdown (right axis). Dotted vertical = out-of-sample start (${fmtDate(DS.meta.oos_start)}).</div>
     </div>
@@ -386,6 +399,7 @@ function renderOverview(){
       <div id="ovMovers"></div>
     </div>`;
   renderPnlStrip('ovPnl');
+  document.getElementById('benchSel').innerHTML = benchChips();
   document.getElementById('ovWinBtns').innerHTML = windowBtns(state.perfWindow,['3M','6M','YTD','1Y','SI'],'setOvWin');
   buildEquityChart('ovEquity',{window:state.perfWindow,showBenchmarks:true,showDrawdown:true,showRegime:true,showLive:true});
   const bySleeve={}; Object.keys(w.by_sleeve).forEach(k=>{ if((w.by_sleeve[k]||0)>1e-4) bySleeve[(DS.weights.sleeve_meta[k]||{}).name||k]=w.by_sleeve[k]; });
@@ -548,6 +562,7 @@ function renderPerformance(){
           <div id="perfWinBtns"></div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:11px">Benchmarks</span><span id="benchSel" style="display:inline-flex;gap:6px;flex-wrap:wrap"></span></div>
       <div id="perfEquity" class="chart" style="height:380px"></div>
     </div>
     <div class="grid2">
@@ -570,6 +585,7 @@ function renderPerformance(){
       <div class="card-title" style="margin-bottom:12px">Monthly returns (%)</div>
       <div style="overflow-x:auto" id="perfHeatmap"></div>
     </div>`;
+  document.getElementById('benchSel').innerHTML = benchChips();
   document.getElementById('perfWinBtns').innerHTML = windowBtns(state.perfWindow,['3M','6M','YTD','1Y','3Y','SI'],'setPerfWin');
   buildEquityChart('perfEquity',{window:state.perfWindow,showBenchmarks:true,showDrawdown:false,showRegime:true,showLive:true,log:state.perfLog});
   buildRolling();
@@ -966,7 +982,7 @@ function renderFooter(){
 }
 
 document.addEventListener('DOMContentLoaded', bootstrap);
-window.setTab=setTab; window.setOvWin=setOvWin;
+window.setTab=setTab; window.setOvWin=setOvWin; window.toggleBench=toggleBench;
 </script>
 </body>
 </html>

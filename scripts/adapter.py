@@ -88,13 +88,21 @@ def build_equity(live, multi, overlay, registry, benchmarks) -> tuple[dict, pd.S
             }
             model_full = pd.concat([model_bt, lv])
 
+    # Attach label + colour from the registry so the client benchmark selector
+    # can render any benchmark consistently.
+    bmeta = registry.get("benchmarks", {})
+    bms = {k: {**v, "label": bmeta.get(k, {}).get("label", k),
+               "color": bmeta.get(k, {}).get("color", "#8a8a82"),
+               "default": bool(bmeta.get(k, {}).get("default"))}
+           for k, v in (benchmarks or {}).items()}
+
     equity = {
         "dates": [d.strftime("%Y-%m-%d") for d in idx],
         "model": [_r(v) for v in model_bt.values],
         "gate_only": _align(_series(gated), idx),
         "ungated": _align(_series(ungated), idx),
         "sleeves": sleeves,
-        "benchmarks": benchmarks or {},
+        "benchmarks": bms,
         "live": live_block,
         "labels": {
             "model": deployed.get("label", "Deployed model"),
