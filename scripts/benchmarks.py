@@ -57,11 +57,13 @@ def build_benchmarks(model_dates: list[str], registry: dict,
     start = (idx[0] - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
     end = (idx[-1] + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
 
-    # Collect every raw ticker referenced by any benchmark.
+    # Collect every raw ticker referenced by any benchmark (including FX pairs).
     tickers: set[str] = set()
     for cfg in bms.values():
         if cfg["type"] == "yfinance":
             tickers.add(cfg["ticker"])
+            if cfg.get("fx"):
+                tickers.add(cfg["fx"])
         elif cfg["type"] == "blend":
             tickers.update(cfg["components"].keys())
 
@@ -72,23 +74,41 @@ def build_benchmarks(model_dates: list[str], registry: dict,
 
     # Reindex every raw series onto the model's trading days (ffill gaps).
     px = close.reindex(close.index.union(idx)).ffill().reindex(idx)
-    if px.isna().all().any():
-        missing = [c for c in px.columns if px[c].isna().all()]
-        return {}, False, f"benchmark tickers had no data: {missing}"
+
+    def _have(t: str) -> bool:
+        return t in px.columns and not px[t].isna().all()
+
+    def _rebase(series: pd.Series) -> pd.Series:
+        s = series.dropna()
+        return series / s.iloc[0] if len(s) else series
 
     out: dict = {}
+    skipped: list[str] = []
     for key, cfg in bms.items():
-        if cfg["type"] == "yfinance":
-            series = px[cfg["ticker"]].ffill()
-            eq = series / series.iloc[0]
-        else:  # daily constant-mix blend
-            rets = px[list(cfg["components"])].pct_change().fillna(0.0)
-            weights = pd.Series(cfg["components"])
-            blended = (rets[weights.index] * weights).sum(axis=1)
-            eq = (1.0 + blended).cumprod()
-            eq = eq / eq.iloc[0]
-        out[key] = {
-            "dates": [d.strftime("%Y-%m-%d") for d in idx],
-            "equity": [round(float(v), 6) for v in eq.values],
-        }
-    return out, True, "ok"
+        try:
+            if cfg["type"] == "yfinance":
+                if not _have(cfg["ticker"]) or (cfg.get("fx") and not _have(cfg["fx"])):
+                    skipped.append(key)
+                    continue
+                series = px[cfg["ticker"]].ffill()
+                if cfg.get("fx"):                     # convert a local-currency index to USD
+                    series = series * px[cfg["fx"]].ffill()
+                eq = _rebase(series)
+            else:  # daily constant-mix blend
+                comps = list(cfg["components"])
+                if any(not _have(c) for c in comps):
+                    skipped.append(key)
+                    continue
+                rets = px[comps].pct_change().fillna(0.0)
+                weights = pd.Series(cfg["components"])
+                eq = _rebase((1.0 + (rets[weights.index] * weights).sum(axis=1)).cumprod())
+            out[key] = {
+                "dates": [d.strftime("%Y-%m-%d") for d in idx],
+                "equity": [None if pd.isna(v) else round(float(v), 6) for v in eq.values],
+            }
+        except Exception:
+            skipped.append(key)
+
+    if not out:
+        return {}, False, f"no benchmark had usable data (skipped {skipped})"
+    return out, True, ("ok" if not skipped else f"ok; skipped {skipped}")

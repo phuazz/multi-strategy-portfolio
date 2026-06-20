@@ -28,9 +28,12 @@
   },
   "benchmarks": {
     "SPY": {"name": "S&P 500", "label": "S&P 500", "type": "yfinance", "ticker": "SPY", "color": "#8a8a82", "default": true},
+    "QQQ": {"name": "NASDAQ-100", "label": "NASDAQ-100", "type": "yfinance", "ticker": "QQQ", "color": "#7c3aed"},
     "ACWI": {"name": "MSCI ACWI", "label": "MSCI ACWI", "type": "yfinance", "ticker": "ACWI", "color": "#2563eb"},
+    "STI": {"name": "Straits Times Index", "label": "STI (USD)", "type": "yfinance", "ticker": "ES3.SI", "fx": "SGDUSD=X", "color": "#0891b2"},
     "BAL6040": {"name": "60/40", "label": "60/40 (SPY/IEF)", "type": "blend", "components": {"SPY": 0.6, "IEF": 0.4}, "color": "#b0b0a8"},
-    "AOR": {"name": "Global 60/40", "label": "Global 60/40 (AOR)", "type": "yfinance", "ticker": "AOR", "color": "#be185d"}
+    "AOR": {"name": "Global 60/40", "label": "Global 60/40 (AOR)", "type": "yfinance", "ticker": "AOR", "color": "#be185d"},
+    "BIL": {"name": "T-Bills (cash)", "label": "Cash (T-Bills)", "type": "yfinance", "ticker": "BIL", "color": "#a16207"}
   },
   "freshness": {
     "price_bdays": 4,
