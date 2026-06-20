@@ -46,7 +46,7 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     # Benchmarks aligned to the deployed model's date axis.
     model_dates = overlay["gated_variants"][reg["source"]["deployed_key"]]["dates"]
     if use_benchmarks:
-        benchmarks, bench_ok, bench_note = build_benchmarks(model_dates, reg)
+        benchmarks, bench_ok, bench_note = build_benchmarks(model_dates, reg, live.get("live_dates"))
     else:
         benchmarks, bench_ok, bench_note = {}, False, "skipped (--no-benchmarks)"
     print(f"  benchmarks: ok={bench_ok} ({bench_note})")
@@ -54,7 +54,9 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     equity, model_bt, model_full = adapter.build_equity(live, multi, overlay, reg, benchmarks)
     stats = adapter.build_stats(model_bt, model_full, overlay, reg, benchmarks)
     regime = adapter.build_regime(overlay, live)
-    attribution = adapter.build_attribution(equity, weights, price_series, reg)
+    risk = adapter.build_risk(price_series, weights, reg)
+    attribution = adapter.build_attribution(equity, weights, price_series, reg, risk["by_ticker"])
+    pnl = adapter.build_pnl(model_full, benchmarks)
     signals = adapter.build_signals(weights, price_meta, reg)
     monthly = metrics.monthly_matrix(model_full)
 
@@ -66,6 +68,7 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     meta = {
         "id": reg["id"], "name": reg["name"], "descriptor": reg["descriptor"],
         "status": reg["status"], "inception": reg["inception"], "rebalance": reg["rebalance"],
+        "oos_start": reg.get("oos_start"), "in_sample_end": reg.get("in_sample_end"),
         "base_currency": reg["base_currency"], "cost_assumption_bps": reg["cost_assumption_bps"],
         "asOf": stats["end"], "live_asOf": (equity["live"] or {}).get("dates", [stats["end"]])[-1]
         if equity.get("live") else stats["end"],
@@ -78,8 +81,8 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
 
     dataset = {
         "meta": meta, "weights": weights, "equity": equity, "stats": stats,
-        "regime": regime, "attribution": attribution, "signals": signals,
-        "monthly": monthly, "changes": changes, "health": health,
+        "regime": regime, "attribution": attribution, "risk": risk, "pnl": pnl,
+        "signals": signals, "monthly": monthly, "changes": changes, "health": health,
     }
     _report(dataset)
     return dataset

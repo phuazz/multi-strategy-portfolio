@@ -40,15 +40,20 @@ def _download(tickers: list[str], start: str, end: str) -> pd.DataFrame:
     return close.dropna(how="all")
 
 
-def build_benchmarks(model_dates: list[str], registry: dict) -> tuple[dict, bool, str]:
-    """Return ({key: {dates, equity}}, ok, note) aligned to model_dates."""
+def build_benchmarks(model_dates: list[str], registry: dict,
+                     live_dates: list[str] | None = None) -> tuple[dict, bool, str]:
+    """Return ({key: {dates, equity}}, ok, note) aligned to model + live dates.
+
+    Including the live mark-to-market dates means the benchmark series covers the
+    same latest day as the model, so intraday/1-day P&L is a like-for-like compare.
+    """
     bms = registry.get("benchmarks", {})
     if not bms:
         return {}, True, "no benchmarks configured"
     if not _HAS_YF:
         return {}, False, "yfinance not installed"
 
-    idx = pd.to_datetime(sorted(set(model_dates)))
+    idx = pd.to_datetime(sorted(set(model_dates) | set(live_dates or [])))
     start = (idx[0] - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
     end = (idx[-1] + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
 

@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 import metrics
+from config import TRADING_DAYS_PER_YEAR as TRADING_DAYS
 
 HORIZONS = [("1D", 1), ("1W", 5), ("1M", 21)]  # YTD / SI handled separately
 
@@ -270,7 +271,7 @@ def _ret_ytd(s: pd.Series) -> float | None:
     return float(s.iloc[-1] / base - 1.0)
 
 
-def build_attribution(equity, weights, prices, registry) -> dict:
+def build_attribution(equity, weights, prices, registry, risk_by_ticker=None) -> dict:
     idx = pd.to_datetime(equity["dates"])
     sleeves = registry["sleeves"]
     tilt_on = weights["tilt_on"]
@@ -300,7 +301,10 @@ def build_attribution(equity, weights, prices, registry) -> dict:
         if s is None or w <= 1e-4:
             continue
         row = {"ticker": r["ticker"], "name": r["name"], "sleeve": r["sleeve"],
-               "weight": _r(w, 5), "covered": True}
+               "theme": r["theme"], "weight": _r(w, 5), "covered": True}
+        rk = (risk_by_ticker or {}).get(r["ticker"])
+        if rk:
+            row["vol"], row["risk_pct"], row["ret_1y"] = rk["vol"], rk["risk_pct"], rk["ret_1y"]
         for hk, bars in HORIZONS:
             rr = _ret_over(s, bars)
             row[hk] = {"ret": _r(rr, 5), "contrib": _r(w * rr, 5) if rr is not None else None}
@@ -353,3 +357,74 @@ def build_changes(weights, prev_dataset) -> dict:
     turnover = 0.5 * sum(abs(cur.get(t, 0.0) - prev.get(t, 0.0)) for t in tickers)
     return {"available": True, "turnover": _r(turnover, 5), "deltas": deltas,
             "asOf_prev": (prev_dataset.get("meta") or {}).get("asOf")}
+
+
+# --- short-horizon P&L (model vs benchmarks) -------------------------------
+def build_pnl(model_full: pd.Series, benchmarks: dict) -> dict:
+    """Intraday / 1-day / 1-week return for the model and each benchmark.
+
+    The model marks once daily at close, so 'Intraday' is the latest mark-to-market
+    day, '1-Day' the prior completed session, and '1-Week' the trailing five
+    sessions. Benchmarks are indexed identically (they carry the live date too).
+    """
+    def rets(s: pd.Series) -> dict:
+        n = len(s)
+        return {
+            "intraday": _r(float(s.iloc[-1] / s.iloc[-2] - 1.0), 5) if n >= 2 else None,
+            "1D": _r(float(s.iloc[-2] / s.iloc[-3] - 1.0), 5) if n >= 3 else None,
+            "1W": _r(float(s.iloc[-1] / s.iloc[-6] - 1.0), 5) if n >= 6 else None,
+        }
+    out = {"model": rets(model_full)}
+    for k, bm in (benchmarks or {}).items():
+        out[k] = rets(metrics.equity_series(bm["dates"], bm["equity"]))
+    sources = list(out.keys())
+    return {p: {src: out[src][p] for src in sources} for p in ("intraday", "1D", "1W")}
+
+
+# --- risk decomposition ----------------------------------------------------
+def build_risk(price_series: dict, weights: dict, registry: dict) -> dict:
+    """Per-holding annualised vol and risk contribution from the ~1y price panel.
+
+    Risk contribution_i = w_i * (Sigma w)_i / sigma_p, summing to 100% of portfolio
+    risk — the standard 'where does my risk actually sit vs my capital' view. The
+    covariance uses the most recent ~252 aligned observations. European holdings
+    are priced in local currency (a known, flagged approximation).
+    """
+    rows = [r for r in weights["rows"] if (r.get("weight") or 0) > 1e-4]
+    series, info = {}, {}
+    for r in rows:
+        s = price_series.get(r["ticker"])
+        if s is None:
+            s = price_series.get(r["tradeAs"])
+        if s is None:
+            continue
+        series[r["ticker"]] = s
+        info[r["ticker"]] = r
+    if len(series) < 2:
+        return {"holdings": [], "by_ticker": {}, "port_vol": None,
+                "note": "insufficient price coverage for a risk decomposition"}
+
+    px = pd.concat(series, axis=1).dropna().tail(TRADING_DAYS)
+    rets = px.pct_change().dropna()
+    tickers = list(px.columns)
+    cov = rets.cov().values * TRADING_DAYS                      # annualised covariance
+    wv = np.array([info[t]["weight"] or 0.0 for t in tickers], dtype="float64")
+    wv = wv / wv.sum() if wv.sum() else wv
+    port_var = float(wv @ cov @ wv)
+    port_vol = math.sqrt(port_var) if port_var > 0 else 0.0
+    rc = wv * (cov @ wv)                                        # risk contribution (to variance)
+    risk_pct = rc / port_var if port_var > 0 else np.zeros_like(rc)
+    vols = np.sqrt(np.diag(cov))
+    holdings, by_ticker = [], {}
+    for i, t in enumerate(tickers):
+        r = info[t]
+        ret1y = float(px[t].iloc[-1] / px[t].iloc[0] - 1.0)
+        rec = {"vol": _r(vols[i], 4), "risk_pct": _r(float(risk_pct[i]), 5), "ret_1y": _r(ret1y, 5)}
+        by_ticker[t] = rec
+        holdings.append({"ticker": t, "name": r["name"], "sleeve": r["sleeve"],
+                         "theme": r["theme"], "weight": r["weight"], **rec})
+    return {"holdings": holdings, "by_ticker": by_ticker, "port_vol": _r(port_vol, 4),
+            "obs": int(len(rets)),
+            "note": "Annualised from the most recent ~1y of daily returns. Risk contribution "
+                    "= w*(Sigma w)/sigma_p, summing to 100%. European holdings are priced in "
+                    "local currency."}

@@ -4,6 +4,8 @@
   "descriptor": "Systematic breadth- and trend-driven global ETF rotation",
   "status": "paper",
   "inception": "2018-11-08",
+  "in_sample_end": "2025-12-31",
+  "oos_start": "2026-01-01",
   "rebalance": "Weekly (Friday)",
   "base_currency": "USD",
   "cost_assumption_bps": 5,
