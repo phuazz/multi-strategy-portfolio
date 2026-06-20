@@ -154,12 +154,11 @@ a{color:var(--b);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-navigo-systematic-trend.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'etf', attrGroup:'etf', benchmarks:null };
+const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null };
 
 const TABS = [
-  ['overview','Overview'], ['allocation','Allocation'], ['performance','Performance'],
-  ['attribution','Attribution'], ['risk','Risk & Regime'], ['signals','Signals'],
-  ['health','Data Health'], ['method','Methodology'],
+  ['overview','Overview'], ['attribution','Attribution'], ['allocation','Allocation'], ['performance','Performance'],
+  ['risk','Risk & Regime'], ['signals','Signals'], ['health','Data Health'], ['method','Methodology'],
 ];
 const SLEEVE_COLORS = {A:'#2563eb',B:'#1a8754',C:'#b45309',D:'#7c3aed',TILT:'#0891b2',CASH:'#8a8a82'};
 
@@ -680,16 +679,16 @@ function renderAttribution(){
       <div class="card-note" style="margin-top:6px">${esc(DS.attribution.note)}${DS.attribution.uncovered.length?' Uncovered (no price feed): '+DS.attribution.uncovered.join(', ')+'.':''}</div>
     </div>
     <div class="grid2">
-      <div class="card"><div class="card-h"><div class="card-title">Risk vs return</div><div class="card-note">bubble = weight · 1-year</div></div>
+      <div class="card"><div class="card-h"><div class="card-title">Risk vs return</div><div class="card-note">bubble = weight · follows view &amp; horizon</div></div>
         <div id="attrScatter" class="chart" style="height:300px"></div>
-        <div class="card-note" style="margin-top:6px">Annualised volatility (x) vs 1-year return (y); bubble size is portfolio weight, colour is sleeve. ${esc((DS.risk||{}).note||'')}</div></div>
+        <div class="card-note" style="margin-top:6px">Annualised volatility (x) vs the selected horizon's return (y); points follow the ETF/theme/sleeve view, bubble size is weight, colour is sleeve. Theme volatility is a weight-average of members (approximate). ${esc((DS.risk||{}).note||'')}</div></div>
       <div class="card"><div class="card-title" style="margin-bottom:10px" id="attrTblTitle">Detail</div><div style="overflow-x:auto"><table class="tbl" id="attrTbl"></table></div></div>
     </div>`;
   document.getElementById('attrHzBtns').innerHTML = windowBtns(state.attrHorizon,['1D','1W','1M','YTD','SI'],'setAttrHz');
   buildAttrChart(); buildRiskScatter(); buildAttrTable();
 }
 function setAttrView(v){ state.attrView=v; renderAttribution(); }
-function setAttrHz(k){ state.attrHorizon=k; document.getElementById('attrHzBtns').innerHTML=windowBtns(k,['1D','1W','1M','YTD','SI'],'setAttrHz'); buildAttrChart(); buildAttrTable(); }
+function setAttrHz(k){ state.attrHorizon=k; document.getElementById('attrHzBtns').innerHTML=windowBtns(k,['1D','1W','1M','YTD','SI'],'setAttrHz'); buildAttrChart(); buildRiskScatter(); buildAttrTable(); }
 function attrRows(){
   const hz=state.attrHorizon;
   if(state.attrView==='sleeve'){
@@ -715,19 +714,41 @@ function buildAttrChart(){
     hovertemplate:'%{y}<br>contrib %{x:.2f}%<extra></extra>'}],
     baseLayout({margin:{t:8,b:30,l:96,r:14},xaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},yaxis:{tickfont:{size:11},automargin:true},hovermode:'closest'}));
 }
+function volOf(arr){ const r=arrReturns((arr||[]).slice(-253).filter(isNum)); if(r.length<2) return null;
+  const m=mean(r); return Math.sqrt(mean(r.map(x=>(x-m)**2)))*Math.sqrt(252); }
+function attrScatterNodes(){
+  // Nodes follow the contribution view (ETF/theme/sleeve); y = selected horizon
+  // return, x = annualised volatility (a ~1y risk characteristic).
+  const hz=state.attrHorizon, v=state.attrView, rk=(DS.risk||{}).by_ticker||{};
+  const etfRet=e=> hz==='SI' ? e.ret_1y : (e[hz]||{}).ret;   // ETFs have no since-inception price → use 1Y
+  if(v==='sleeve'){
+    return Object.entries(DS.attribution.sleeve).map(([code,r])=>({label:code,color:SLEEVE_COLORS[code]||'#888',
+      x:volOf((DS.equity.sleeves||{})[code]), y:(r[hz]||{}).ret, size:r.alloc}));
+  }
+  if(v==='theme'){
+    const g={};
+    DS.attribution.etf.forEach(e=>{ const t=e.theme||'Other', w=e.weight||0, ret=etfRet(e), vol=(rk[e.ticker]||{}).vol;
+      g[t]=g[t]||{label:t,w:0,rw:0,vw:0,_sl:{}}; g[t].w+=w; if(isNum(ret))g[t].rw+=w*ret; if(isNum(vol))g[t].vw+=w*vol;
+      g[t]._sl[e.sleeve]=(g[t]._sl[e.sleeve]||0)+w; });
+    return Object.values(g).map(x=>{ const dom=Object.entries(x._sl).sort((a,b)=>b[1]-a[1])[0];
+      return {label:x.label,color:SLEEVE_COLORS[dom&&dom[0]]||'#2563eb',x:x.w?x.vw/x.w:null,y:x.w?x.rw/x.w:null,size:x.w}; });
+  }
+  return DS.attribution.etf.map(e=>({label:e.ticker,color:SLEEVE_COLORS[e.sleeve]||'#888',
+    x:(rk[e.ticker]||{}).vol, y:etfRet(e), size:e.weight}));
+}
 function buildRiskScatter(){
-  const h=(DS.risk||{}).holdings||[];
-  if(!h.length){ document.getElementById('attrScatter').innerHTML='<div class="muted" style="padding:50px;text-align:center">No risk decomposition available.</div>'; return; }
-  const sleeves=[...new Set(h.map(x=>x.sleeve))];
-  const traces=sleeves.map(sl=>{ const p=h.filter(x=>x.sleeve===sl); return {
-    type:'scatter',mode:'markers+text',name:sl,x:p.map(x=>x.vol*100),y:p.map(x=>x.ret_1y*100),
-    text:p.map(x=>x.ticker),textposition:'top center',textfont:{size:8,color:'#5c5c56'},
-    marker:{size:p.map(x=>Math.max(9,Math.sqrt(x.weight)*95)),color:SLEEVE_COLORS[sl]||'#888',opacity:0.72,line:{color:'#fff',width:1}},
-    customdata:p.map(x=>[x.weight*100,(x.risk_pct||0)*100]),
-    hovertemplate:'<b>%{text}</b><br>vol %{x:.0f}% · 1y %{y:.0f}%<br>weight %{customdata[0]:.1f}% · risk %{customdata[1]:.1f}%<extra></extra>'}; });
-  plot(document.getElementById('attrScatter'),traces,baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:10}},hovermode:'closest',
-    xaxis:{title:{text:'Annualised volatility',font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:false},
-    yaxis:{title:{text:'1-year return',font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'}}));
+  const el=document.getElementById('attrScatter'); if(!el) return;
+  const nodes=attrScatterNodes().filter(n=>isNum(n.x)&&isNum(n.y));
+  if(!nodes.length){ el.innerHTML='<div class="muted" style="padding:50px;text-align:center">No risk/return data for this view.</div>'; return; }
+  const hz=state.attrHorizon; const yLabel=((state.attrView!=='sleeve')&&hz==='SI')?'1-year return':hz+' return';
+  plot(el,[{type:'scatter',mode:'markers+text',x:nodes.map(n=>n.x*100),y:nodes.map(n=>n.y*100),
+    text:nodes.map(n=>n.label),textposition:'top center',textfont:{size:8,color:'#5c5c56'},
+    marker:{size:nodes.map(n=>Math.max(9,Math.sqrt(Math.abs(n.size||0))*95)),color:nodes.map(n=>n.color),opacity:0.72,line:{color:'#fff',width:1}},
+    customdata:nodes.map(n=>(n.size||0)*100),
+    hovertemplate:'<b>%{text}</b><br>vol %{x:.0f}% · ret %{y:.1f}%<br>weight %{customdata:.1f}%<extra></extra>'}],
+    baseLayout({showlegend:false,hovermode:'closest',
+      xaxis:{title:{text:'Annualised volatility',font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:false},
+      yaxis:{title:{text:yLabel,font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'}}));
 }
 function buildAttrTable(){
   const hz=state.attrHorizon, v=state.attrView; const rows=attrRows().sort((a,b)=>b.contrib-a.contrib);
@@ -794,7 +815,7 @@ function renderRisk(){
     </div>
     <div class="grid2">
       <div class="card">
-        <div class="card-title" style="margin-bottom:10px">Model track with risk-off periods</div>
+        <div class="card-h"><div class="card-title">Model track with risk-off periods</div><div id="riskWinBtns"></div></div>
         <div id="riskEquity" class="chart" style="height:300px"></div>
         <div class="card-note" style="margin-top:6px">Red bands = gate in risk-off (50% to ${rg.fallback_ticker}).</div>
       </div>
@@ -807,7 +828,8 @@ function renderRisk(){
       <div class="card"><div class="card-title" style="margin-bottom:10px">EM tilt — ratio vs moving averages</div><div id="riskEem" class="chart" style="height:280px"></div></div>
       <div class="card"><div class="card-title" style="margin-bottom:10px">Sleeve correlation (daily returns, since inception)</div><div id="riskCorr"></div></div>
     </div>`;
-  buildEquityChart('riskEquity',{window:'SI',showBenchmarks:false,showDrawdown:false,showRegime:true,showLive:false});
+  document.getElementById('riskWinBtns').innerHTML=windowBtns(state.riskWindow,['6M','YTD','1Y','3Y','SI'],'setRiskWin');
+  buildEquityChart('riskEquity',{window:state.riskWindow,showBenchmarks:false,showDrawdown:false,showRegime:true,showLive:false});
   // events table (most recent first)
   const ev=rg.events.slice().reverse();
   document.getElementById('riskEvents').innerHTML =
@@ -837,22 +859,40 @@ function buildCorrMatrix(elId){
     <div class="card-note" style="margin-top:8px">Lower cross-sleeve correlation is the diversification engine. Model row reflects the blend.</div>`;
 }
 
+function setRiskWin(k){ state.riskWindow=k; document.getElementById('riskWinBtns').innerHTML=windowBtns(k,['6M','YTD','1Y','3Y','SI'],'setRiskWin'); buildEquityChart('riskEquity',{window:k,showBenchmarks:false,showDrawdown:false,showRegime:true,showLive:false}); }
+
 function renderSignals(){
   const sig=DS.signals, sm=DS.weights.sleeve_meta;
   const order=['A','B','C','D']; const el=document.getElementById('tabContent');
-  el.innerHTML = `<div class="callout" style="margin-bottom:18px">Each sleeve below shows its <strong>current holdings and weights</strong> — the live output of the breadth / trend / momentum signal — with each holding's position versus its 200-day moving average where a price feed is available. This is the “why these weights” view.</div>
+  el.innerHTML = `<div class="callout" style="margin-bottom:18px">Each sleeve below shows its <strong>current holdings and weights</strong> — the live output of the breadth / trend / momentum signal — with each holding versus its 200-day moving average. The <strong>Trend (1Y)</strong> sparkline shows the past year's price coloured <span style="color:var(--g);font-weight:600">green</span> when above its 200-day MA and <span style="color:var(--r);font-weight:600">red</span> when below — the trend signal's history.</div>
     <div class="grid2">${order.filter(c=>sig[c]&&sig[c].length).map(c=>`
       <div class="card">
         <div class="card-h"><div class="card-title">${sleeveChip(c)} ${esc((sm[c]||{}).name||c)}</div><div class="card-note">${pct((sm[c]||{}).alloc,0)} of NAV</div></div>
         <div class="muted" style="font-size:12px;margin-bottom:12px">${esc((sm[c]||{}).desc||'')}</div>
-        <table class="tbl"><thead><tr><th>Holding</th><th class="r">Weight</th><th class="r">vs 200d</th><th class="r">1d</th></tr></thead><tbody>
+        <table class="tbl"><thead><tr><th>Holding</th><th class="r">Weight</th><th class="r">vs 200d</th><th class="r">1d</th><th class="c">Trend (1Y)</th></tr></thead><tbody>
         ${sig[c].map(h=>`<tr>
           <td><strong>${esc(h.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(h.name)}</span><br><span class="muted" style="font-size:10px">${esc(h.theme)}</span></td>
           <td class="r num">${pct(h.weight,1)}</td>
           <td class="r">${trendBar(h.vs_ma200)}</td>
-          <td class="r num ${signClass(h.change_pct)}">${isNum(h.change_pct)?pctSigned(h.change_pct):'—'}</td></tr>`).join('')}
+          <td class="r num ${signClass(h.change_pct)}">${isNum(h.change_pct)?pctSigned(h.change_pct):'—'}</td>
+          <td class="c">${sparkSVG(h.ticker)}</td></tr>`).join('')}
         </tbody></table>
       </div>`).join('')}</div>`;
+}
+function sparkSVG(ticker){
+  const h=(DS.holdings_prices||{})[ticker]; if(!h||!h.close) return '<span class="muted">—</span>';
+  const close=h.close, ma=h.ma200||[], n=close.length, W=120,H=26,pad=2;
+  const vals=close.filter(isNum); if(vals.length<3) return '<span class="muted">—</span>';
+  const mn=Math.min(...vals), mx=Math.max(...vals), rng=(mx-mn)||1;
+  const X=i=> pad+(i/(n-1))*(W-2*pad), Y=v=> H-pad-((v-mn)/rng)*(H-2*pad);
+  let segs=[],cur=null,sign=null;
+  for(let i=0;i<n;i++){ if(!isNum(close[i])) continue;
+    const s=(isNum(ma[i])&&close[i]>=ma[i])?1:-1;
+    if(s!==sign){ if(cur&&cur.length) segs.push({s:sign,pts:cur}); cur=[]; sign=s; if(i>0&&isNum(close[i-1])) cur.push([X(i-1),Y(close[i-1])]); }
+    cur.push([X(i),Y(close[i])]); }
+  if(cur&&cur.length) segs.push({s:sign,pts:cur});
+  const polys=segs.map(g=>`<polyline fill="none" stroke="${g.s>=0?'#1a8754':'#c0392b'}" stroke-width="1.3" points="${g.pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"/>`).join('');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="vertical-align:middle" title="1-year price; green = above 200-day MA, red = below">${polys}</svg>`;
 }
 function trendBar(v){ if(!isNum(v)) return '<span class="muted">—</span>';
   const pc=(v*100); const w=Math.min(50,Math.abs(pc)*1.5); const col=v>=0?'#1a8754':'#c0392b';
