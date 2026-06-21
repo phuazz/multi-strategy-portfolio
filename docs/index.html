@@ -133,6 +133,7 @@ a{color:var(--b);text-decoration:none}
 .chip-bear{background:var(--r-bg);color:var(--r);border-color:rgba(192,57,43,0.3)}
 .act{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:0.3px;color:#fff;min-width:36px;text-align:center}
 .act-new{background:#1a8754} .act-add{background:#22a366} .act-trim{background:#b45309} .act-exit{background:#c0392b} .act-initial{background:#8a8a82}
+.act-derisk{background:#c0392b} .act-reengage{background:#1a8754} .act-tilton{background:#0891b2} .act-tiltoff{background:#8a8a82}
 
 @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
@@ -992,12 +993,15 @@ function renderTrades(){
   const latestTitle = latest.type==='initial' ? 'Opening position — '+fmtDate(latest.date)
       : (days<=8?"This week's trades":'Latest rebalance')+' — '+fmtDate(latest.date);
   const actChip=a=>`<span class="act act-${(a||'').toLowerCase()}">${a}</span>`;
+  const ACT_CLS={'De-risk':'derisk','Re-engage':'reengage','EM tilt on':'tilton','EM tilt off':'tiltoff'};
+  const actionChip=a=>`<span class="act act-${ACT_CLS[a]||'initial'}">${esc(a)}</span>`;
+  const acts=t.actions||[];
   const dRow=d=>`<tr><td>${actChip(d.action)} <strong>${esc(d.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(d.name)}</span></td>
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
   const blotter=[]; log.forEach(e=> (e.deltas||[]).forEach(d=> blotter.push(Object.assign({date:e.date,etype:e.type},d))));
   el.innerHTML = `
-    <div class="callout" style="margin-bottom:18px">Rebalance &amp; trade history. The model rebalances <strong>weekly (Fridays)</strong>; the ledger records every change in target weights — adds, trims, new entries and exits. History begins ${fmtDate(t.since)}, when monitoring started; the engine does not expose pre-monitoring target weights. Rebalance dates also appear as thin blue verticals on the performance charts.</div>
+    <div class="callout" style="margin-bottom:18px">Two views of portfolio change. The <strong>weight ledger</strong> (this week's trades and every weekly rebalance) accumulates from ${fmtDate(t.since)}, when monitoring started. <strong>Portfolio actions since inception</strong> (below) covers every de-risk and EM-tilt switch back to 2018 — the model's macro moves — sourced from the engine's overlay events. The model rebalances weekly (Fridays); weekly within-sleeve sector rotations before monitoring are not published by the engine. Rebalance dates show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
       <div class="card">
         <div class="card-h"><div class="card-title">${latestTitle}</div><div class="card-note">turnover ${pct(latest.turnover,1)} · ${latest.n} ${latest.type==='initial'?'positions':'trades'}</div></div>
@@ -1010,6 +1014,14 @@ function renderTrades(){
         <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each rebalance. Higher bars = more trading.</div>
       </div>
     </div>
+    ${acts.length?`<div class="card">
+      <div class="card-h"><div class="card-title">Portfolio actions — since inception</div><div class="card-note">${acts.length} de-risk / EM-tilt moves since 2018</div></div>
+      <div style="overflow-x:auto;max-height:420px"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody>${acts.map(a=>`<tr><td class="num" style="font-size:11px">${fmtDate(a.date)}</td>
+        <td>${actionChip(a.action)} <span class="muted" style="font-size:11px">${esc(a.kind)}</span></td>
+        <td style="font-size:12px;color:var(--t2)">${esc(a.detail)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card-note" style="margin-top:6px">The model's macro portfolio actions, sourced from the engine's de-risk gate and EM-tilt switch events. Weekly within-sleeve sector rotations are not published by the engine.</div>
+    </div>`:''}
     <div class="card">
       <div class="card-h"><div class="card-title">Trade blotter</div><div class="card-note">${blotter.length} change${blotter.length===1?'':'s'} across ${log.length} event${log.length===1?'':'s'}</div></div>
       <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Trade</th><th class="r">From</th><th class="r">To</th><th class="r">Δ weight</th></tr></thead>

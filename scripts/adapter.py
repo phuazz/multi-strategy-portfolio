@@ -430,6 +430,36 @@ def build_trades(ledger, weights, registry, asof):
     return new_ledger, trades
 
 
+def build_action_history(overlay) -> list:
+    """The strategy's consequential portfolio actions since inception, sourced
+    from the engine's overlay events: every de-risk gate switch (move to / from
+    cash) and every EM-tilt switch. These are the macro trades the model has made;
+    the weekly within-sleeve sector rotations are not published by the engine.
+    """
+    gp = overlay.get("gate_parameters", {})
+    off_t, on_t = gp.get("off_threshold", 0.2), gp.get("on_threshold", 0.5)
+    derisk, fb = gp.get("derisk_fraction", 0.5), gp.get("fallback_ticker", "SHY")
+    out = []
+    for e in overlay.get("events", []):
+        off = e.get("direction") == "RISK_OFF"
+        b = e.get("breadth")
+        detail = (f"Breadth {b:.0%} below {off_t:.0%} — shifted {derisk:.0%} of NAV to {fb}"
+                  if off and b is not None else
+                  f"Breadth {b:.0%} above {on_t:.0%} — re-engaged the full blend"
+                  if b is not None else ("De-risk to " + fb if off else "Re-engaged"))
+        out.append({"date": e["date"], "kind": "De-risk gate", "action": "De-risk" if off else "Re-engage",
+                    "dir": "down" if off else "up", "detail": detail, "metric": _r(b, 4)})
+    for e in overlay.get("phase22_eem_tilt", {}).get("events", []):
+        on = e.get("direction") == "EM_TILT_ON"
+        out.append({"date": e["date"], "kind": "EM tilt", "action": "EM tilt on" if on else "EM tilt off",
+                    "dir": "up" if on else "down",
+                    "detail": ("EEM/SPY golden cross — tilted 10% of NAV to EEM (from cross-asset trend)" if on
+                               else "EEM/SPY death cross — removed the EM tilt"),
+                    "metric": _r(e.get("ratio"), 4)})
+    out.sort(key=lambda x: x["date"], reverse=True)
+    return out
+
+
 # --- short-horizon P&L (model vs benchmarks) -------------------------------
 def build_pnl(model_full: pd.Series, benchmarks: dict) -> dict:
     """1-day / 1-week / 1-month return for the model and each benchmark.

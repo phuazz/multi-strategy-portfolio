@@ -69,6 +69,7 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     ledger = _load_ledger(portfolio_id)
     new_ledger, trades = adapter.build_trades(ledger, weights, reg, stats["end"])
     _save_ledger(portfolio_id, new_ledger)
+    trades["actions"] = adapter.build_action_history(overlay)   # de-risk + EM-tilt history since inception
 
     health = validate.run(bundle, reg, run_date, stats, bench_ok, bench_note)
 
