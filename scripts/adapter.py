@@ -265,7 +265,28 @@ def build_stats(model_bt, model_full, overlay, registry, benchmarks) -> dict:
     tol = {"sharpe": 0.05, "cagr": 0.01, "total_return": 0.05, "max_dd": 0.01}
     reconcile_ok = all((diffs[k] or 0) <= tol[k] for k in tol)
 
+    # Excess-over-cash (T-bills) risk-adjusted metrics — the honest figure vs rf=0.
+    cash_bm = (benchmarks or {}).get("BIL")
+    excess = (metrics.excess_sharpe_sortino(model_bt, metrics.equity_series(cash_bm["dates"], cash_bm["equity"]))
+              if cash_bm else {})
+
+    # Out-of-sample (live-period) cumulative performance — never annualised (short sample).
+    oos, oos_start = None, registry.get("oos_start")
+    if oos_start:
+        def _from(series, start):
+            prior = series[series.index < pd.Timestamp(start)]
+            base = prior.iloc[-1] if len(prior) else series.iloc[0]
+            return float(series.iloc[-1] / base - 1.0)
+        seg = model_full[model_full.index >= pd.Timestamp(oos_start)]
+        oos = {"start": oos_start, "model": _r(_from(model_full, oos_start), 5),
+               "benchmarks": {k: _r(_from(metrics.equity_series(bm["dates"], bm["equity"]), oos_start), 5)
+                              for k, bm in (benchmarks or {}).items()},
+               "maxdd": _r(float(metrics.drawdown_series(seg).min()), 4) if len(seg) else None,
+               "months": round((model_full.index[-1] - pd.Timestamp(oos_start)).days / 30.44, 1)}
+
     return {
+        "sharpe_excess": _r(excess.get("sharpe")), "sortino_excess": _r(excess.get("sortino")),
+        "cash_cagr": _r(excess.get("cash_cagr")), "oos": oos,
         **{k: _r(v) for k, v in full.items() if not isinstance(v, (dict, str))},
         "start": full["start"], "end": full["end"],
         "period_returns": {k: _r(v, 5) for k, v in full["period_returns"].items()},
@@ -570,7 +591,10 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         "weights": weights_out, "ticker_sleeve": tsl,
         "ticker_name": {t: meta.get(t, {}).get("name", t) for t in sig},
     }
-    return {"since": grid[0], "asOf": grid[-1], "count": n_rebal,
+    # Annualised one-way turnover (excludes the initial deployment week).
+    yrs = (pd.Timestamp(weekly[-1]["date"]) - pd.Timestamp(weekly[1]["date"])).days / 365.25 if len(weekly) > 2 else 0
+    ann_turn = (sum(w["turnover"] or 0 for w in weekly[1:]) / yrs) if yrs > 0 else None
+    return {"since": grid[0], "asOf": grid[-1], "count": n_rebal, "ann_turnover": _r(ann_turn, 3),
             "weekly": weekly, "alloc_history": alloc_history, "reconstructed": True}
 
 

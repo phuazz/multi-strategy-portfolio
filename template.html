@@ -245,7 +245,7 @@ function renderKPIs(){
     kpiCard('1 Year', pctSigned(pr['1Y']), 'trailing', signClass(pr['1Y'])),
     kpiCard('CAGR', pct(s.cagr), 'since inception'),
     kpiCard('Ann. Vol', pct(s.ann_vol), 'daily, ×√252'),
-    kpiCard('Sharpe', num(s.sharpe,2), 'rf = 0'),
+    kpiCard('Sharpe', num(isNum(s.sharpe_excess)?s.sharpe_excess:s.sharpe,2), isNum(s.sharpe_excess)?'excess vs T-bills':'rf = 0'),
     kpiCard('Max DD', pct(s.max_dd), 'now '+pct(s.current_dd), 'neg'),
     kpiCard('Breadth', pct(rg.breadth,0), rg.state==='RISK_ON'?'risk-on':'risk-off', rg.state==='RISK_ON'?'pos':'neg'),
   ].join('');
@@ -730,9 +730,26 @@ function renderPerformance(){
       <div class="card">
         <div class="card-title" style="margin-bottom:12px">Risk &amp; return statistics</div>
         <div style="overflow-x:auto"><table class="tbl" id="perfStats"></table></div>
-        <div class="card-note" style="margin-top:8px">Annualised with √252; Sharpe/Sortino assume rf = 0. Benchmarks from total-return prices.</div>
+        <div class="card-note" style="margin-top:8px">Annualised with √252. The table uses rf = 0 for like-for-like across columns; the model's <strong>excess-over-T-bills Sharpe is ${num(s.sharpe_excess,2)}</strong>${isNum(s.cash_cagr)?` (cash ≈ ${pct(s.cash_cagr,1)} pa)`:''}. Most of this history is in-sample — see the out-of-sample card below.</div>
       </div>
     </div>
+    ${s.oos?`<div class="grid2">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">Out-of-sample — since ${fmtDate(s.oos.start)} (${s.oos.months} mo)</div>
+        <div style="overflow-x:auto"><table class="tbl"><thead><tr><th></th><th class="r">Cumulative</th></tr></thead><tbody>
+          <tr><td><span class="dot" style="background:#1a8754"></span><strong>Model</strong></td><td class="r num ${signClass(s.oos.model)}">${pctSigned(s.oos.model)}</td></tr>
+          ${['SPY','ACWI','BAL6040'].filter(k=>isNum((s.oos.benchmarks||{})[k])).map(k=>`<tr><td><span class="dot" style="background:${(DS.equity.benchmarks[k]||{}).color||'#8a8a82'}"></span>${esc((DS.equity.benchmarks[k]||{}).label||k)}</td><td class="r num ${signClass(s.oos.benchmarks[k])}">${pctSigned(s.oos.benchmarks[k])}</td></tr>`).join('')}
+          <tr class="sum"><td>Excess vs S&amp;P 500</td><td class="r num ${signClass(s.oos.model-(s.oos.benchmarks.SPY||0))}">${pctSigned(s.oos.model-(s.oos.benchmarks.SPY||0))}</td></tr>
+          <tr><td>Max drawdown</td><td class="r num neg">${pct(s.oos.maxdd)}</td></tr>
+        </tbody></table></div>
+        <div class="card-note" style="margin-top:6px">The live, out-of-sample window (parameters were fixed before 2026). <strong>Cumulative, not annualised</strong> — ${s.oos.months} months is far too short for a meaningful annual Sharpe.</div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px">Turnover &amp; cost sensitivity</div>
+        <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Round-trip cost</th><th class="r">Annual drag</th><th class="r">Net CAGR</th></tr></thead><tbody id="costBody"></tbody></table></div>
+        <div class="card-note" style="margin-top:6px">Annualised one-way turnover ≈ <strong>${pct(DS.trades.ann_turnover,0)}/yr</strong>. The backtest assumes ${DS.meta.cost_assumption_bps} bps switch cost only; thematic / EM / European names trade dearer, so realistic net is likely nearer the 15–20 bps rows.</div>
+      </div>
+    </div>`:''}
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Monthly returns (%)</div>
       <div style="overflow-x:auto" id="perfHeatmap"></div>
@@ -744,6 +761,7 @@ function renderPerformance(){
   buildUnderwater();
   buildPeriodTable();
   buildPerfStats();
+  if(DS.stats.oos && DS.trades && isNum(DS.trades.ann_turnover)) buildCostTable();
   buildHeatmap();
 }
 function buildPeriodTable(){
@@ -798,6 +816,14 @@ function buildPerfStats(){
   const head=`<thead><tr><th>Metric</th>${cols.map(c=>`<th class="r"><span class="dot" style="background:${c[3]}"></span>${c[0]}</th>`).join('')}</tr></thead>`;
   const body=rows.map(([lab,vals])=>`<tr><td>${lab}</td>${vals.map(v=>`<td class="r num">${v}</td>`).join('')}</tr>`).join('');
   document.getElementById('perfStats').innerHTML=head+'<tbody>'+body+'</tbody>';
+}
+function buildCostTable(){
+  const tn=DS.trades.ann_turnover, gross=DS.stats.cagr, base=DS.meta.cost_assumption_bps||5, el=document.getElementById('costBody');
+  if(!el||!isNum(tn)||!isNum(gross)) return;
+  const grossOfAll = gross + tn*2*base/1e4;                  // add back the assumed cost to get pre-cost CAGR
+  el.innerHTML=[5,10,15,20,30].map(bps=>{ const drag=tn*2*bps/1e4, net=grossOfAll-drag;
+    return `<tr${bps===base?' class="sum"':''}><td class="num">${bps} bps${bps===base?' · assumed':''}</td>
+      <td class="r num neg">−${(drag*100).toFixed(2)}%</td><td class="r num">${pct(net,1)}</td></tr>`; }).join('');
 }
 function buildHeatmap(){
   const mm=DS.monthly; const years=Object.keys(mm).sort();
@@ -1251,7 +1277,8 @@ function renderMethod(){
         <ul style="margin:0 0 0 18px;font-size:13px;line-height:1.8;color:var(--t2)">
           <li><strong>Paper model.</strong> No live capital; not investment advice or an offer.</li>
           <li><strong>In-sample vs out-of-sample.</strong> Parameters were selected over ${fmtDate(m.inception)} to ${fmtDate(m.in_sample_end)}; ${fmtDate(m.oos_start)} onward is out-of-sample. Live results will differ.</li>
-          <li><strong>Costs.</strong> Backtest includes only a ${m.cost_assumption_bps} bps switch cost — no slippage, spread or market impact.</li>
+          <li><strong>Costs &amp; turnover.</strong> The model turns over ${isNum((DS.trades||{}).ann_turnover)?'≈'+pct(DS.trades.ann_turnover,0)+'/yr':'heavily'}; the backtest charges only ${m.cost_assumption_bps} bps switch cost (no slippage, spread or impact). At realistic costs the CAGR is ~2–3% pa lower — see the cost-sensitivity table on Performance.</li>
+          <li><strong>Capacity.</strong> The thematic and single-country sleeves (e.g. solar, lithium, China A-share chips) have limited liquidity; a live fund could not trade them at backtest size.</li>
           <li><strong>EM tilt</strong> rests on few distinct golden-cross events in 7.5 years; treat as a low-conviction positional bet.</li>
           <li><strong>European sleeve</strong> trades EUR-listed instruments; signal-vs-trade instrument can differ (UCITS sibling).</li>
         </ul>

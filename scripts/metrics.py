@@ -175,6 +175,24 @@ def monthly_matrix(eq: pd.Series) -> dict:
 
 
 # --- benchmark-relative ----------------------------------------------------
+def excess_sharpe_sortino(model: pd.Series, cash: pd.Series) -> dict:
+    """Sharpe/Sortino on returns in excess of a cash (T-bill) series, not rf=0.
+
+    rf=0 overstates risk-adjusted return when cash yields are material; this is the
+    honest figure for a fund. Aligns daily model and cash returns and annualises.
+    """
+    mr, cr = daily_returns(model), daily_returns(cash)
+    j = pd.concat({"m": mr, "c": cr}, axis=1).dropna()
+    if len(j) < 3:
+        return {"sharpe": None, "sortino": None, "cash_cagr": None}
+    ex = j["m"] - j["c"]
+    sd = ex.std(ddof=1)
+    dn = ex[ex < 0].std(ddof=1)
+    return {"sharpe": float(ex.mean() / sd * AnnFactor) if sd else None,
+            "sortino": float(ex.mean() / dn * AnnFactor) if dn else None,
+            "cash_cagr": cagr(cash)}
+
+
 def prev_weekday(ref) -> pd.Timestamp:
     """The calendar weekday immediately before `ref`, skipping Sat/Sun.
 
