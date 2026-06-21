@@ -430,7 +430,7 @@ function renderPnlStrip(elId){
       <div class="kpi-val ${signClass(m)}">${pctSigned(m,2)}</div>
       <div class="kpi-sub">SPY ${pctSigned(spy,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span></div></div>`;
   }).join('');
-  const intra=`<div class="kpi" id="ovIntraday" title="Today's move across markets, computed live from constituent ETF quotes since each market's prior close. Non-USD holdings are in local currency. Live quotes via a public proxy — may be delayed or briefly unavailable.">
+  const intra=`<div class="kpi" id="ovIntraday" title="Live during market hours only: the weighted move of constituent ETF quotes since each market's prior close (non-USD in local currency, via a public quote proxy). When markets are closed it shows 'Markets closed' and the model's last completed session (the calendar-anchored 1-day) rather than a stale figure.">
     <div class="kpi-label">Intraday P&amp;L <span class="livedot off" id="liveDot"></span></div>
     <div class="kpi-val muted" id="intraVal">…</div><div class="kpi-sub" id="intraSub">fetching live quotes…</div></div>`;
   document.getElementById(elId).innerHTML = intra + hist;
@@ -468,14 +468,21 @@ async function refreshIntraday(){
   if(!valEl) return;
   let pnl=0, cov=0, tmax=0;
   quotes.forEach((q,i)=>{ if(q&&isNum(q.ret)){ pnl+=(rows[i].weight||0)*q.ret; cov+=(rows[i].weight||0); if(q.t) tmax=Math.max(tmax,q.t); } });
-  if(cov<0.01){ valEl.textContent='—'; valEl.className='kpi-val muted'; subEl.textContent='live unavailable'; if(dot) dot.className='livedot off'; return; }
-  const ex=(spyQ&&isNum(spyQ.ret))? pnl-spyQ.ret : null;
-  valEl.textContent=pctSigned(pnl,2); valEl.className='kpi-val '+signClass(pnl);
-  if(dot) dot.className='livedot';
-  const asOf=tmax? new Date(tmax*1000):null;
-  const recent=asOf && (Date.now()-asOf.getTime() < 18*3600*1000);
-  const tstr=asOf? (recent?'live ':'last ')+asOf.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : 'live';
-  subEl.innerHTML=(spyQ&&isNum(spyQ.ret)?`SPY ${pctSigned(spyQ.ret,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span> · `:'')+tstr+(cov<0.95?` · ${Math.round(cov*100)}% cov`:'');
+  if(cov<0.01){ valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px'; subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; return; }
+  const ageMin = tmax ? (Date.now()/1000 - tmax)/60 : 1e9;   // freshness of the latest quote
+  if(ageMin < 30){                                            // a market is actively trading -> genuine live intraday
+    const ex=(spyQ&&isNum(spyQ.ret))? pnl-spyQ.ret : null;
+    valEl.textContent=pctSigned(pnl,2); valEl.className='kpi-val '+signClass(pnl); valEl.style.fontSize='';
+    if(dot) dot.className='livedot';
+    subEl.innerHTML=(spyQ&&isNum(spyQ.ret)?`SPY ${pctSigned(spyQ.ret,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span> · `:'')
+      +'live '+new Date(tmax*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+(cov<0.95?` · ${Math.round(cov*100)}% cov`:'');
+  } else {                                                    // nothing trading -> no intraday; show the model's last session
+    if(dot) dot.className='livedot off';
+    valEl.textContent='Markets closed'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
+    const p1=DS.pnl['1D']||{}, d1=p1.model, s1=p1.SPY, ex1=(isNum(d1)&&isNum(s1))?d1-s1:null;
+    const qd=tmax? fmtDateShort(new Date(tmax*1000).toISOString().slice(0,10)) : '';
+    subEl.innerHTML='last session '+pctSigned(d1,2)+(isNum(ex1)?` · vs SPY ${pctSigned(ex1,2)}`:'')+(qd?` · quotes ${qd}`:'');
+  }
 }
 
 function renderMovers(elId, hz){
