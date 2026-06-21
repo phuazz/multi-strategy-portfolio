@@ -123,6 +123,8 @@ a{color:var(--b);text-decoration:none}
 .callout{background:var(--bg3);border-left:3px solid var(--bd-strong);padding:12px 16px;border-radius:6px;font-size:13px;color:var(--t2);line-height:1.6}
 .loading{padding:80px 20px;text-align:center;color:var(--t3);font-size:15px}
 .hint{background:var(--b-bg);border:1px solid var(--b-bg2);color:var(--b);font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px}
+.filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:32px;width:150px;background:var(--bg2);color:var(--t1)}
+.filter-input:focus{outline:none;border-color:var(--t2)}
 .row-exp{cursor:pointer}
 .row-exp:hover{background:var(--bg-hover)}
 .exp-ind{display:inline-block;width:12px;color:var(--t3);font-size:9px}
@@ -161,9 +163,10 @@ a{color:var(--b);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-navigo-systematic-trend.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1W' };
+const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1W', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
 const WIN_OV=['1W','1M','3M','6M','YTD','1Y','SI'], WIN_PERF=['1W','1M','3M','6M','YTD','1Y','3Y','SI'], WIN_RISK=['1W','1M','6M','YTD','1Y','3Y','SI'];
+let _blotter=[], _actions=[];   // Trades-tab filterable rows
 
 const TABS = [
   ['overview','Overview'], ['attribution','Attribution'], ['allocation','Allocation'], ['trades','Trades'], ['performance','Performance'],
@@ -529,6 +532,19 @@ function renderAllocation(){
       ${exposureCard('By asset class','expAsset')}
       ${exposureCard('By geography','expGeo')}
     </div>
+    ${(DS.trades&&DS.trades.alloc_history)?`<div class="card">
+      <div class="card-h"><div class="card-title">Allocation over time</div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <div class="fbtns" id="allocGroupBtns">
+            <button class="fbtn ${state.allocGroup==='sleeve'?'active':''}" onclick="setAllocGroup('sleeve')">By sleeve</button>
+            <button class="fbtn ${state.allocGroup==='holding'?'active':''}" onclick="setAllocGroup('holding')">By holding</button>
+          </div>
+          <div id="allocWinBtns"></div>
+        </div>
+      </div>
+      <div id="allocHist" class="chart" style="height:320px"></div>
+      <div class="card-note" style="margin-top:6px">Weekly target weights since inception (stacks to 100%). Watch the cash band swell in de-risk episodes and the rotation across sectors/themes. Holdings that never reached 1% are grouped as “Other”.</div>
+    </div>`:''}
     <div class="card">
       <div class="card-h"><div class="card-title">Model portfolio — target weights</div>
         <div class="card-note">${w.concentration.n_holdings} holdings · HHI ${num(w.concentration.hhi,3)} · top-5 ${pct(w.concentration.top5,0)} · cash ${pct(w.cash_pct,1)}</div></div>
@@ -540,6 +556,35 @@ function renderAllocation(){
   exposureBars('expAsset', w.by_asset_class, ()=> '#2563eb', k=>k);
   exposureBars('expGeo', w.by_geo, ()=> '#7c3aed', k=>k);
   renderAllocTable();
+  if(DS.trades&&DS.trades.alloc_history){ document.getElementById('allocWinBtns').innerHTML=windowBtns(state.allocWin,['1Y','3Y','SI'],'setAllocWin'); buildAllocHistory(); }
+}
+function setAllocGroup(g){ state.allocGroup=g; document.getElementById('allocGroupBtns').innerHTML=
+  ['sleeve','holding'].map(k=>`<button class="fbtn ${state.allocGroup===k?'active':''}" onclick="setAllocGroup('${k}')">${k==='sleeve'?'By sleeve':'By holding'}</button>`).join(''); buildAllocHistory(); }
+function setAllocWin(k){ state.allocWin=k; document.getElementById('allocWinBtns').innerHTML=windowBtns(k,['1Y','3Y','SI'],'setAllocWin'); buildAllocHistory(); }
+function _hexRgba(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+function buildAllocHistory(){
+  const ah=DS.trades.alloc_history, el=document.getElementById('allocHist'); if(!el) return;
+  const dates=ah.dates, i0=sliceWindow(dates, state.allocWin||'SI'), xd=dates.slice(i0);
+  let series=[];   // {name, color, y[]}
+  if(state.allocGroup==='sleeve'){
+    const order=['A','B','C','D','TILT','Cash']; const sums={}; order.forEach(c=>sums[c]=new Array(dates.length).fill(0));
+    Object.keys(ah.weights).forEach(t=>{ const c=ah.ticker_sleeve[t]||'B'; const tgt=sums[c]?c:'B'; const arr=ah.weights[t]; for(let i=0;i<arr.length;i++) sums[tgt][i]+=arr[i]||0; });
+    series=order.filter(c=>sums[c].some(v=>v>1e-4)).map(c=>({name:(DS.weights.sleeve_meta[c]||{}).name||(c==='Cash'?'Cash / de-risk':c), color:SLEEVE_COLORS[c]||(c==='Cash'?'#8a8a82':'#b0b0a8'), y:sums[c].slice(i0)}));
+  } else {
+    const ts=ah.ticker_sleeve;
+    const tickers=Object.keys(ah.weights).sort((a,b)=>{ const sa=ts[a]||'Z', sb=ts[b]||'Z'; return sa<sb?-1:sa>sb?1:(a<b?-1:1); });
+    const bySl={}; tickers.forEach(t=>{ (bySl[ts[t]||'B']=bySl[ts[t]||'B']||[]).push(t); });
+    tickers.forEach(t=>{ const sl=ts[t]||'B'; const grp=bySl[sl]; const j=grp.indexOf(t); const base=SLEEVE_COLORS[sl]||'#8a8a82';
+      const alpha=grp.length>1?0.9-0.5*(j/(grp.length-1)):0.8;
+      series.push({name:t, color: sl==='Cash'?'#8a8a82':_hexRgba(base,alpha), y:ah.weights[t].slice(i0)}); });
+    series=series.filter(s=>s.y.some(v=>v>1e-4));
+  }
+  const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>(v||0)*100),
+    stackgroup:'one',line:{width:0.4,color:typeof s.color==='string'&&s.color.startsWith('rgba')?s.color:s.color},fillcolor:s.color,
+    hovertemplate:'%{x|%-d %b %y}<br>'+esc(s.name)+' %{y:.1f}%<extra></extra>'}));
+  plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:9}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
+    yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},range:[0,100]},
+    xaxis:{gridcolor:'#ededea',tickfont:{size:9},range:[xd[0],xd[xd.length-1]]}}));
 }
 function exposureCard(title,id){ return `<div class="card"><div class="card-title" style="margin-bottom:12px">${title}</div><div id="${id}"></div></div>`; }
 function exposureBars(elId, mapping, colorFn, labelFn){
@@ -1002,11 +1047,11 @@ function renderTrades(){
   const actChip=a=>`<span class="act act-${(a||'').toLowerCase()}">${a}</span>`;
   const ACT_CLS={'De-risk':'derisk','Re-engage':'reengage','EM tilt on':'tilton','EM tilt off':'tiltoff'};
   const actionChip=a=>`<span class="act act-${ACT_CLS[a]||'initial'}">${esc(a)}</span>`;
-  const acts=t.actions||[];
+  _actions=t.actions||[];
   const dRow=d=>`<tr><td>${actChip(d.action)} <strong>${esc(d.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(d.name)}</span></td>
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
-  const blotter=[]; log.forEach(e=> (e.deltas||[]).forEach(d=> blotter.push(Object.assign({date:e.date,etype:e.type},d))));
+  _blotter=[]; log.forEach(e=> (e.deltas||[]).forEach(d=> _blotter.push(Object.assign({date:e.date,etype:e.type},d))));
   el.innerHTML = `
     <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Portfolio actions</strong> (below) highlights the macro de-risk and EM-tilt switches. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
@@ -1021,26 +1066,55 @@ function renderTrades(){
         <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each weekly rebalance since inception. First bar = initial deployment.</div>
       </div>
     </div>
-    ${acts.length?`<div class="card">
-      <div class="card-h"><div class="card-title">Portfolio actions — since inception</div><div class="card-note">${acts.length} de-risk / EM-tilt moves since 2018</div></div>
-      <div style="overflow-x:auto;max-height:420px"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Detail</th></tr></thead>
-      <tbody>${acts.map(a=>`<tr><td class="num" style="font-size:11px">${fmtDate(a.date)}</td>
-        <td>${actionChip(a.action)} <span class="muted" style="font-size:11px">${esc(a.kind)}</span></td>
-        <td style="font-size:12px;color:var(--t2)">${esc(a.detail)}</td></tr>`).join('')}</tbody></table></div>
-      <div class="card-note" style="margin-top:6px">The model's macro portfolio actions, sourced from the engine's de-risk gate and EM-tilt switch events. Weekly within-sleeve sector rotations are not published by the engine.</div>
+    ${_actions.length?`<div class="card">
+      <div class="card-h"><div class="card-title">Overlay actions — de-risk gate &amp; EM tilt</div><div class="fbtns" id="actFilter"></div></div>
+      <div style="overflow-x:auto;max-height:360px"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody id="actBody"></tbody></table></div>
+      <div class="card-note" style="margin-top:6px">The model's macro overlay switches (the engine's de-risk gate and EM-tilt events) — a subset of all trading. Weekly sector rotations are in the blotter below.</div>
     </div>`:''}
     <div class="card">
-      <div class="card-h"><div class="card-title">Trade blotter</div><div class="card-note">${blotter.length} change${blotter.length===1?'':'s'} across ${log.length} event${log.length===1?'':'s'}</div></div>
+      <div class="card-h"><div class="card-title">Trade blotter</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="filter-input" id="blotQ" placeholder="search ticker / name" oninput="setBlotQ(this.value)">
+          <div class="fbtns" id="blotFilter"></div><span class="card-note" id="blotCount"></span></div></div>
       <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Trade</th><th class="r">From</th><th class="r">To</th><th class="r">Δ weight</th></tr></thead>
-      <tbody>${blotter.slice(0,200).map(b=>`<tr><td class="num" style="font-size:11px">${fmtDate(b.date)}</td>
-        <td>${actChip(b.action)} <strong>${esc(b.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(b.name)}</span></td>
-        <td class="r num">${pct(b.from,1)}</td><td class="r num">${pct(b.to,1)}</td>
-        <td class="r num ${signClass(b.delta)}">${pctSigned(b.delta,1)}</td></tr>`).join('')}</tbody></table></div>
+      <tbody id="blotBody"></tbody></table></div>
     </div>`;
   const wk=(t.weekly&&t.weekly.length)?t.weekly:log.slice().reverse();   // full weekly series since inception
   plot(document.getElementById('trTurnover'),[{type:'bar',x:wk.map(e=>e.date),y:wk.map(e=>(e.turnover||0)*100),
     marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
     baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:9}}}));
+  if(_actions.length){ document.getElementById('actFilter').innerHTML=_actFilterChips(); renderActions(); }
+  document.getElementById('blotFilter').innerHTML=_blotFilterChips();
+  const bq=document.getElementById('blotQ'); if(bq) bq.value=state.blotQ||'';
+  renderBlotter();
+}
+function _actChip(a){ return `<span class="act act-${(a||'').toLowerCase()}">${a}</span>`; }
+const _ACT_CLS={'De-risk':'derisk','Re-engage':'reengage','EM tilt on':'tilton','EM tilt off':'tiltoff'};
+function _actionChip(a){ return `<span class="act act-${_ACT_CLS[a]||'initial'}">${esc(a)}</span>`; }
+function _actFilterChips(){ return [['all','All'],['derisk','De-risk gate'],['tilt','EM tilt']].map(([k,l])=>
+  `<button class="fbtn ${(state.actFilter||'all')===k?'active':''}" onclick="setActFilter('${k}')">${l}</button>`).join(''); }
+function setActFilter(k){ state.actFilter=k; document.getElementById('actFilter').innerHTML=_actFilterChips(); renderActions(); }
+function renderActions(){
+  const f=state.actFilter||'all', b=document.getElementById('actBody'); if(!b) return;
+  const rows=_actions.filter(a=> f==='all' || (f==='derisk'&&a.kind==='De-risk gate') || (f==='tilt'&&a.kind==='EM tilt'));
+  b.innerHTML = rows.length ? rows.map(a=>`<tr><td class="num" style="font-size:11px">${fmtDate(a.date)}</td>
+    <td>${_actionChip(a.action)} <span class="muted" style="font-size:11px">${esc(a.kind)}</span></td>
+    <td style="font-size:12px;color:var(--t2)">${esc(a.detail)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted" style="padding:14px">No matching actions.</td></tr>';
+}
+function _blotFilterChips(){ return [['all','All'],['NEW','New'],['ADD','Add'],['TRIM','Trim'],['EXIT','Exit']].map(([k,l])=>
+  `<button class="fbtn ${(state.blotAct||'all')===k?'active':''}" onclick="setBlotAct('${k}')">${l}</button>`).join(''); }
+function setBlotAct(k){ state.blotAct=k; document.getElementById('blotFilter').innerHTML=_blotFilterChips(); renderBlotter(); }
+function setBlotQ(v){ state.blotQ=v; renderBlotter(); }
+function renderBlotter(){
+  const q=(state.blotQ||'').toUpperCase().trim(), af=state.blotAct||'all', b=document.getElementById('blotBody'); if(!b) return;
+  let rows=_blotter.filter(x=> (af==='all'||x.action===af) && (!q || (x.ticker||'').toUpperCase().includes(q) || (x.name||'').toUpperCase().includes(q)));
+  const total=rows.length; rows=rows.slice(0,250);
+  b.innerHTML = rows.length ? rows.map(x=>`<tr><td class="num" style="font-size:11px">${fmtDate(x.date)}</td>
+    <td>${_actChip(x.action)} <strong>${esc(x.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(x.name)}</span></td>
+    <td class="r num">${pct(x.from,1)}</td><td class="r num">${pct(x.to,1)}</td>
+    <td class="r num ${signClass(x.delta)}">${pctSigned(x.delta,1)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted" style="padding:14px">No matching trades.</td></tr>';
+  const cc=document.getElementById('blotCount'); if(cc) cc.textContent=total+' match'+(total===1?'':'es')+(total>250?' · showing 250':'');
 }
 
 function renderHealth(){
@@ -1162,6 +1236,7 @@ function renderFooter(){
 
 document.addEventListener('DOMContentLoaded', bootstrap);
 window.setTab=setTab; window.setOvWin=setOvWin; window.toggleBench=toggleBench; window.setOvDonut=setOvDonut; window.setOvMoversHz=setOvMoversHz;
+window.setAllocGroup=setAllocGroup; window.setAllocWin=setAllocWin; window.setActFilter=setActFilter; window.setBlotAct=setBlotAct; window.setBlotQ=setBlotQ;
 </script>
 </body>
 </html>

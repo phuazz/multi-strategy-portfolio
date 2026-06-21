@@ -519,6 +519,7 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         return "ADD" if c > f else "TRIM"
 
     weekly, detailed, prev, n_rebal = [], [], None, 0
+    tsleeve, matrix_rows = {}, []          # ticker -> sleeve, and (date, weights) per week
     for d in grid:
         ton, roff = _state(tilts, d, "EM_TILT_ON"), _state(regime, d, "RISK_OFF")
         alloc = {"A": 0.35, "B": 0.25 if ton else 0.35, "C": 0.10, "D": 0.20}
@@ -526,12 +527,15 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         for c, a in alloc.items():
             for t, wt in _asof(c, d).items():
                 w[t] = w.get(t, 0.0) + a * wt
+                tsleeve.setdefault(t, c)
         if ton:
             w["EEM"] = w.get("EEM", 0.0) + 0.10
         if roff:
             w = {t: v * (1 - derisk) for t, v in w.items()}
             w[fb] = w.get(fb, 0.0) + derisk
+            tsleeve[fb] = "Cash"
         w = {t: v for t, v in w.items() if v > 1e-4}
+        matrix_rows.append((d, w))
 
         if prev is None:
             deltas = [{"ticker": t, "name": nm(t), "from": 0.0, "to": _r(v, 5), "delta": _r(v, 5), "action": "INITIAL"}
@@ -551,8 +555,25 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
             detailed.append({"date": d, "type": typ, "turnover": turn, "n": len(deltas), "deltas": deltas})
         prev = w
 
+    all_t = sorted({t for _, w in matrix_rows for t in w})
+    series = {t: [w.get(t, 0.0) for _, w in matrix_rows] for t in all_t}
+    # Keep currently-held names and historically-material ones (>3% peak); fold the
+    # transient long tail into "Other" so the chart and file stay manageable.
+    sig = [t for t in all_t if max(series[t]) > 0.03 or series[t][-1] > 0.001]
+    weights_out = {t: [_r(v, 4) for v in series[t]] for t in sig}
+    other = [sum(series[t][i] for t in all_t if t not in sig) for i in range(len(matrix_rows))]
+    tsl = {t: tsleeve.get(t, "B") for t in sig}
+    if any(o > 1e-4 for o in other):
+        weights_out["Other"] = [_r(o, 4) for o in other]
+        tsl["Other"] = "Other"
+    alloc_history = {
+        "dates": [d for d, _ in matrix_rows],
+        "weights": weights_out, "ticker_sleeve": tsl,
+        "ticker_name": {t: meta.get(t, {}).get("name", t) for t in sig},
+    }
     return {"since": grid[0], "asOf": grid[-1], "count": n_rebal,
-            "log": detailed[::-1][:detail_weeks], "weekly": weekly, "reconstructed": True}
+            "log": detailed[::-1][:detail_weeks], "weekly": weekly,
+            "alloc_history": alloc_history, "reconstructed": True}
 
 
 # --- short-horizon P&L (model vs benchmarks) -------------------------------
