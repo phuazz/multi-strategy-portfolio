@@ -48,6 +48,7 @@ def load_sources(registry: dict, *, local: str | None = None) -> dict:
     """
     src = registry["source"]
     files = src["files"]
+    hist_files = src.get("history_files", [])   # optional — for the weight-history reconstruction
     out: dict = {}
 
     if local:
@@ -58,6 +59,12 @@ def load_sources(registry: dict, *, local: str | None = None) -> dict:
             if not path.exists():
                 raise FileNotFoundError(f"Local source missing: {path}")
             out[fn] = json.loads(path.read_text(encoding="utf-8"))
+        for fn in hist_files:
+            path = base / fn
+            try:
+                out[fn] = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                print(f"  [sources] optional history file {fn} unavailable ({exc!r})", file=sys.stderr)
         out["source_commit"] = "LOCAL"
         return out
 
@@ -70,6 +77,12 @@ def load_sources(registry: dict, *, local: str | None = None) -> dict:
         except Exception as exc:
             raise RuntimeError(f"Failed to fetch required source {url}: {exc}") from exc
         print(f"    ok  {fn} ({len(json.dumps(out[fn]))//1024} KB)")
+    for fn in hist_files:                        # best-effort — never block the build
+        try:
+            out[fn] = json.loads(_fetch_url(f"{raw_base}/{fn}"))
+            print(f"    ok  {fn} (history, {len(json.dumps(out[fn]))//1024} KB)")
+        except Exception as exc:
+            print(f"  [sources] optional history file {fn} fetch failed ({exc!r})", file=sys.stderr)
 
     out["source_commit"] = fetch_commit_sha(src["api_base"], src["ref"])
     return out

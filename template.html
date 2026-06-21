@@ -335,9 +335,9 @@ function buildEquityChart(elId, opt){
     shapes.push({type:'line',xref:'x',yref:'paper',x0:oos,x1:oos,y0:0,y1:1,line:{color:'#1a1a18',width:1.2,dash:'dot'}});
     anns.push({x:oos,xref:'x',y:1.02,yref:'paper',text:'Out-of-sample →',showarrow:false,font:{size:9,color:'#5c5c56'},xanchor:'left'});
   }
-  if(opt.showRegime && DS.trades && DS.trades.log){   // tie trades to performance: thin verticals at rebalances
-    DS.trades.log.forEach(e=>{ if(e.type==='rebalance' && e.date>=startDate && e.date<=endDate)
-      shapes.push({type:'line',xref:'x',yref:'paper',x0:e.date,x1:e.date,y0:0,y1:1,line:{color:'rgba(37,99,235,0.22)',width:1}}); });
+  if(opt.showRegime && DS.trades && DS.trades.weekly){   // tie MAJOR rebalances (>8% turnover) to performance
+    DS.trades.weekly.forEach(e=>{ const tn=e.turnover||0; if(tn>0.08 && tn<0.9 && e.date>=startDate && e.date<=endDate)
+      shapes.push({type:'line',xref:'x',yref:'paper',x0:e.date,x1:e.date,y0:0,y1:1,line:{color:'rgba(37,99,235,0.18)',width:1}}); });
   }
   if(shapes.length) layoutExtra.shapes=shapes;
   if(anns.length) layoutExtra.annotations=anns;
@@ -385,7 +385,7 @@ function renderOverview(){
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:11px">Benchmarks</span><span id="benchSel" style="display:inline-flex;gap:6px;flex-wrap:wrap"></span></div>
       <div id="ovEquity" class="chart" style="height:360px"></div>
-      <div class="card-note" style="margin-top:8px">Green solid = deployed model (breadth de-risk gate + EM tilt). Dotted = live mark-to-market this week. Red bands = risk-off periods; red shaded area = model drawdown (right axis). Dotted vertical = out-of-sample start (${fmtDate(DS.meta.oos_start)}); thin blue verticals = rebalance dates.</div>
+      <div class="card-note" style="margin-top:8px">Green solid = deployed model (breadth de-risk gate + EM tilt). Dotted = live mark-to-market this week. Red bands = risk-off periods; red shaded area = model drawdown (right axis). Dotted vertical = out-of-sample start (${fmtDate(DS.meta.oos_start)}); thin blue verticals = major rebalances.</div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -1001,7 +1001,7 @@ function renderTrades(){
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
   const blotter=[]; log.forEach(e=> (e.deltas||[]).forEach(d=> blotter.push(Object.assign({date:e.date,etype:e.type},d))));
   el.innerHTML = `
-    <div class="callout" style="margin-bottom:18px">Two views of portfolio change. The <strong>weight ledger</strong> (this week's trades and every weekly rebalance) accumulates from ${fmtDate(t.since)}, when monitoring started. <strong>Portfolio actions since inception</strong> (below) covers every de-risk and EM-tilt switch back to 2018 — the model's macro moves — sourced from the engine's overlay events. The model rebalances weekly (Fridays); weekly within-sleeve sector rotations before monitoring are not published by the engine. Rebalance dates show as thin blue verticals on the performance charts.</div>
+    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Portfolio actions</strong> (below) highlights the macro de-risk and EM-tilt switches. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
       <div class="card">
         <div class="card-h"><div class="card-title">${latestTitle}</div><div class="card-note">turnover ${pct(latest.turnover,1)} · ${latest.n} ${latest.type==='initial'?'positions':'trades'}</div></div>
@@ -1011,7 +1011,7 @@ function renderTrades(){
       <div class="card">
         <div class="card-title" style="margin-bottom:10px">Turnover by rebalance</div>
         <div id="trTurnover" class="chart" style="height:240px"></div>
-        <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each rebalance. Higher bars = more trading.</div>
+        <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each weekly rebalance since inception. First bar = initial deployment.</div>
       </div>
     </div>
     ${acts.length?`<div class="card">
@@ -1030,9 +1030,9 @@ function renderTrades(){
         <td class="r num">${pct(b.from,1)}</td><td class="r num">${pct(b.to,1)}</td>
         <td class="r num ${signClass(b.delta)}">${pctSigned(b.delta,1)}</td></tr>`).join('')}</tbody></table></div>
     </div>`;
-  const ent=log.slice().reverse();   // oldest -> newest for the time axis
-  plot(document.getElementById('trTurnover'),[{type:'bar',x:ent.map(e=>e.date),y:ent.map(e=>(e.turnover||0)*100),
-    marker:{color:ent.map(e=>e.type==='initial'?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
+  const wk=(t.weekly&&t.weekly.length)?t.weekly:log.slice().reverse();   // full weekly series since inception
+  plot(document.getElementById('trTurnover'),[{type:'bar',x:wk.map(e=>e.date),y:wk.map(e=>(e.turnover||0)*100),
+    marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
     baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:9}}}));
 }
 

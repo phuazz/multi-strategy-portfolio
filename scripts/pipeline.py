@@ -67,9 +67,13 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
 
     # Append-only rebalance/trade ledger (persists across daily builds).
     ledger = _load_ledger(portfolio_id)
-    new_ledger, trades = adapter.build_trades(ledger, weights, reg, stats["end"])
-    _save_ledger(portfolio_id, new_ledger)
+    new_ledger, fwd_trades = adapter.build_trades(ledger, weights, reg, stats["end"])
+    _save_ledger(portfolio_id, new_ledger)                      # keep forward ledger as a fallback
+    hist = adapter.build_weight_history(bundle, reg, overlay)   # full reconstruction (None if sources missing)
+    trades = hist or fwd_trades
     trades["actions"] = adapter.build_action_history(overlay)   # de-risk + EM-tilt history since inception
+    print(f"  trades: {'reconstructed full history' if hist else 'forward ledger'} — "
+          f"{trades.get('count')} rebalances since {trades.get('since')}, {len(trades.get('actions', []))} actions")
 
     health = validate.run(bundle, reg, run_date, stats, bench_ok, bench_note)
 

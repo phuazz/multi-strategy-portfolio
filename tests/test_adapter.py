@@ -72,6 +72,46 @@ def test_trade_ledger_initial_then_rebalance():
     assert tr3["count"] == 2
 
 
+def _th(rows):
+    return {"headline": {"trade_history": rows}}
+
+
+def test_weight_history_reconstruction_and_tilt():
+    bundle = {
+        "topk_robustness.json": _th([
+            {"date": "2026-06-05", "holdings": [{"etf": "SOXX", "weight": 0.5}, {"etf": "IUES", "weight": 0.5}]},
+            {"date": "2026-06-12", "holdings": [{"etf": "SOXX", "weight": 0.6}, {"etf": "IUES", "weight": 0.4}]}]),
+        "asset_class_rotation.json": _th([
+            {"date": "2026-06-05", "holdings": [{"etf": "EEM", "weight": 0.5}, {"etf": "SPY", "weight": 0.5}]},
+            {"date": "2026-06-12", "holdings": [{"etf": "EEM", "weight": 0.5}, {"etf": "SPY", "weight": 0.5}]}]),
+        "thematic_rotation.json": _th([{"date": "2026-06-05", "holdings": [{"etf": "CIBR", "weight": 1.0}]},
+                                       {"date": "2026-06-12", "holdings": [{"etf": "CIBR", "weight": 1.0}]}]),
+        "europe_rotation.json": _th([{"date": "2026-06-05", "holdings": [{"etf": "EXH1", "weight": 1.0}]},
+                                     {"date": "2026-06-12", "holdings": [{"etf": "EXH1", "weight": 1.0}]}]),
+    }
+    # No tilt, no de-risk: allocations 0.35/0.35/0.10/0.20.
+    overlay = {"gate_parameters": {"derisk_fraction": 0.5, "fallback_ticker": "SHY"},
+               "events": [], "phase22_eem_tilt": {"events": []}}
+    h = adapter.build_weight_history(bundle, REG, overlay)
+    assert h and h["reconstructed"] and h["count"] >= 1
+    init = next(e for e in h["log"] if e["type"] == "initial")
+    tomap = {d["ticker"]: d["to"] for d in init["deltas"]}
+    assert abs(tomap["SOXX"] - 0.35 * 0.5) < 1e-6           # alloc x within-sleeve
+    assert abs(tomap["EEM"] - 0.35 * 0.5) < 1e-6
+    assert abs(tomap["CIBR"] - 0.10) < 1e-6 and abs(tomap["EXH1"] - 0.20) < 1e-6
+    latest = h["log"][0]                                     # newest first = the 06-12 rebalance
+    acts = {d["ticker"]: d["action"] for d in latest["deltas"]}
+    assert acts.get("SOXX") == "ADD" and acts.get("IUES") == "TRIM"
+
+    # With the EM tilt on, sleeve B drops to 0.25 and EEM gets +0.10.
+    overlay_tilt = {"gate_parameters": {"derisk_fraction": 0.5, "fallback_ticker": "SHY"}, "events": [],
+                    "phase22_eem_tilt": {"events": [{"date": "2026-06-01", "direction": "EM_TILT_ON"}]}}
+    h2 = adapter.build_weight_history(bundle, REG, overlay_tilt)
+    init2 = next(e for e in h2["log"] if e["type"] == "initial")
+    eem = {d["ticker"]: d["to"] for d in init2["deltas"]}["EEM"]
+    assert abs(eem - (0.25 * 0.5 + 0.10)) < 1e-6            # B at 25% + 10% tilt
+
+
 def test_tilt_off_drops_tilt_leg_and_restores_b_alloc():
     w = adapter.build_weights(_live(tilt=False), REG)
     eem = next(r for r in w["rows"] if r["ticker"] == "EEM")

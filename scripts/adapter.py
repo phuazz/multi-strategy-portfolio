@@ -10,6 +10,7 @@ mark-to-market extension.
 """
 from __future__ import annotations
 
+import bisect
 import math
 
 import numpy as np
@@ -458,6 +459,100 @@ def build_action_history(overlay) -> list:
                     "metric": _r(e.get("ratio"), 4)})
     out.sort(key=lambda x: x["date"], reverse=True)
     return out
+
+
+def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
+    """Reconstruct the deployed blend's full weekly target-weight history.
+
+    The engine publishes each sleeve's weekly within-sleeve weights
+    (headline.trade_history). We combine them with the fixed blend allocations
+    and the overlay state (de-risk gate, EM tilt) per week — the same arithmetic
+    used for the current weights — to recover the per-ticker weekly weights since
+    inception. This is NOT re-running the strategy: signals are the engine's; we
+    only blend its published weights. Returns the trades block, or None if any
+    sleeve's history is unavailable (the caller then falls back to the forward
+    ledger). Validated: the latest reconstructed week equals live_track exactly.
+    """
+    sleeve_src = registry["source"].get("sleeve_history", {})
+    if not sleeve_src:
+        return None
+    meta = registry["etf_meta"]
+    sleeves = {}
+    for code, fn in sleeve_src.items():
+        d = bundle.get(fn)
+        th = (d.get("headline", {}) or {}).get("trade_history") if isinstance(d, dict) else None
+        if not th:
+            return None
+        sleeves[code] = {e["date"]: {h["etf"]: float(h.get("weight", 0.0)) for h in e.get("holdings", [])}
+                         for e in th}
+
+    gp = overlay.get("gate_parameters", {})
+    derisk, fb = float(gp.get("derisk_fraction", 0.5)), gp.get("fallback_ticker", "SHY")
+    regime = sorted(overlay.get("events", []), key=lambda e: e["date"])
+    tilts = sorted(overlay.get("phase22_eem_tilt", {}).get("events", []), key=lambda e: e["date"])
+
+    def _state(events, date, on_dir):                 # latest event on/before date
+        st = False
+        for e in events:
+            if e["date"] <= date:
+                st = (e["direction"] == on_dir)
+            else:
+                break
+        return st
+
+    start, end = max(min(s) for s in sleeves.values()), max(max(s) for s in sleeves.values())
+    grid = [d.strftime("%Y-%m-%d") for d in pd.date_range(start=start, end=end, freq="W-FRI")]
+    if not grid or grid[-1] < end:
+        grid.append(end)                              # capture a non-Friday latest date
+
+    keys = {c: sorted(s) for c, s in sleeves.items()}
+
+    def _asof(code, date):
+        ks = keys[code]; i = bisect.bisect_right(ks, date) - 1
+        return sleeves[code][ks[i]] if i >= 0 else {}
+
+    def nm(t): return meta.get(t, {}).get("name", t)
+
+    def act(f, c):
+        if f <= 1e-4 and c > 1e-4: return "NEW"
+        if f > 1e-4 and c <= 1e-4: return "EXIT"
+        return "ADD" if c > f else "TRIM"
+
+    weekly, detailed, prev, n_rebal = [], [], None, 0
+    for d in grid:
+        ton, roff = _state(tilts, d, "EM_TILT_ON"), _state(regime, d, "RISK_OFF")
+        alloc = {"A": 0.35, "B": 0.25 if ton else 0.35, "C": 0.10, "D": 0.20}
+        w = {}
+        for c, a in alloc.items():
+            for t, wt in _asof(c, d).items():
+                w[t] = w.get(t, 0.0) + a * wt
+        if ton:
+            w["EEM"] = w.get("EEM", 0.0) + 0.10
+        if roff:
+            w = {t: v * (1 - derisk) for t, v in w.items()}
+            w[fb] = w.get(fb, 0.0) + derisk
+        w = {t: v for t, v in w.items() if v > 1e-4}
+
+        if prev is None:
+            deltas = [{"ticker": t, "name": nm(t), "from": 0.0, "to": _r(v, 5), "delta": _r(v, 5), "action": "INITIAL"}
+                      for t, v in sorted(w.items(), key=lambda x: -x[1])]
+            turn, typ, rec = _r(sum(w.values()), 5), "initial", True
+        else:
+            tk = set(w) | set(prev)
+            raw = [(t, prev.get(t, 0.0), w.get(t, 0.0)) for t in tk]
+            turn = _r(0.5 * sum(abs(c - f) for _, f, c in raw), 5)
+            deltas = sorted([{"ticker": t, "name": nm(t), "from": _r(f, 5), "to": _r(c, 5),
+                              "delta": _r(c - f, 5), "action": act(f, c)}
+                             for t, f, c in raw if abs(c - f) > 5e-4], key=lambda x: -abs(x["delta"] or 0))
+            typ, rec = "rebalance", (turn or 0) > 0.002 and bool(deltas)
+        weekly.append({"date": d, "turnover": turn, "n": len(deltas)})
+        if rec:
+            n_rebal += 1
+            detailed.append({"date": d, "type": typ, "turnover": turn, "n": len(deltas), "deltas": deltas})
+        prev = w
+
+    return {"since": grid[0], "asOf": grid[-1], "count": n_rebal,
+            "log": detailed[::-1][:detail_weeks], "weekly": weekly, "reconstructed": True}
 
 
 # --- short-horizon P&L (model vs benchmarks) -------------------------------
