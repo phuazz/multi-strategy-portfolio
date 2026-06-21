@@ -154,7 +154,8 @@ a{color:var(--b);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-navigo-systematic-trend.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null };
+const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1W' };
+const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
 
 const TABS = [
   ['overview','Overview'], ['attribution','Attribution'], ['allocation','Allocation'], ['performance','Performance'],
@@ -376,7 +377,7 @@ function renderOverview(){
     </div>
     <div class="grid2">
       <div class="card">
-        <div class="card-title" style="margin-bottom:12px">Allocation by sleeve</div>
+        <div class="card-h"><div class="card-title">Allocation</div><div id="ovDonutBtns" class="fbtns"></div></div>
         <div id="ovDonut" class="chart" style="height:240px"></div>
       </div>
       <div class="card">
@@ -394,16 +395,18 @@ function renderOverview(){
       </div>
     </div>
     <div class="card">
-      <div class="card-h"><div class="card-title">Recent contributors (1 week)</div><div class="card-note">current weight × ETF return</div></div>
+      <div class="card-h"><div class="card-title">Recent contributors</div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="card-note">weight × ETF return</span><div id="ovMoversBtns"></div></div></div>
       <div id="ovMovers"></div>
     </div>`;
   renderPnlStrip('ovPnl');
   document.getElementById('benchSel').innerHTML = benchChips();
   document.getElementById('ovWinBtns').innerHTML = windowBtns(state.perfWindow,['3M','6M','YTD','1Y','SI'],'setOvWin');
   buildEquityChart('ovEquity',{window:state.perfWindow,showBenchmarks:true,showDrawdown:true,showRegime:true,showLive:true});
-  const bySleeve={}; Object.keys(w.by_sleeve).forEach(k=>{ if((w.by_sleeve[k]||0)>1e-4) bySleeve[(DS.weights.sleeve_meta[k]||{}).name||k]=w.by_sleeve[k]; });
-  buildDonut('ovDonut', bySleeve, (k)=>{ const code=Object.keys(DS.weights.sleeve_meta).find(c=>(DS.weights.sleeve_meta[c].name)===k); return SLEEVE_COLORS[code]||'#8a8a82'; });
-  renderMovers('ovMovers','1W');
+  document.getElementById('ovDonutBtns').innerHTML = donutBtns();
+  renderOvDonut();
+  document.getElementById('ovMoversBtns').innerHTML = windowBtns(state.ovMoversHz,['1D','1W','1M','YTD'],'setOvMoversHz');
+  renderMovers('ovMovers', state.ovMoversHz);
 }
 function setOvWin(k){ state.perfWindow=k; document.getElementById('ovWinBtns').innerHTML=windowBtns(k,['3M','6M','YTD','1Y','SI'],'setOvWin'); buildEquityChart('ovEquity',{window:k,showBenchmarks:true,showDrawdown:true,showRegime:true,showLive:true}); }
 
@@ -428,6 +431,27 @@ function renderMovers(elId, hz){
     <div><div class="section-label">Top contributors</div><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${top.map(mk).join('')}</tbody></table></div>
     <div><div class="section-label">Detractors</div><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${bot.map(mk).join('')}</tbody></table></div>
   </div>`;
+}
+
+function donutBtns(){ const o=[['sleeve','Sleeve'],['asset','Asset class'],['geo','Geography'],['theme','Theme']];
+  return o.map(([k,l])=>`<button class="fbtn ${(state.ovDonut||'sleeve')===k?'active':''}" onclick="setOvDonut('${k}')">${l}</button>`).join(''); }
+function setOvDonut(d){ state.ovDonut=d; document.getElementById('ovDonutBtns').innerHTML=donutBtns(); renderOvDonut(); }
+function setOvMoversHz(k){ state.ovMoversHz=k; document.getElementById('ovMoversBtns').innerHTML=windowBtns(k,['1D','1W','1M','YTD'],'setOvMoversHz'); renderMovers('ovMovers',k); }
+function ovDonutData(){
+  const w=DS.weights, dim=state.ovDonut||'sleeve', m={};
+  if(dim==='sleeve'){ Object.keys(w.by_sleeve).forEach(k=>{ if((w.by_sleeve[k]||0)>1e-4){ const nm=(w.sleeve_meta[k]||{}).name||k; m[nm]={v:w.by_sleeve[k],c:SLEEVE_COLORS[k]||'#8a8a82'}; } }); }
+  else { const src={asset:'by_asset_class',geo:'by_geo',theme:'by_theme'}[dim], obj=w[src]||{}; let i=0;
+    Object.keys(obj).sort((a,b)=>obj[b]-obj[a]).forEach(k=>{ if((obj[k]||0)>1e-4){ m[k]={v:obj[k],c:PALETTE[i%PALETTE.length]}; i++; } }); }
+  let entries=Object.entries(m).sort((a,b)=>b[1].v-a[1].v);
+  if(entries.length>9){ const rest=entries.slice(8); entries=entries.slice(0,8).concat([['Other',{v:rest.reduce((s,e)=>s+e[1].v,0),c:'#b0b0a8'}]]); }
+  return entries;
+}
+function renderOvDonut(){
+  const e=ovDonutData();
+  plot(document.getElementById('ovDonut'),[{type:'pie',labels:e.map(x=>x[0]),values:e.map(x=>x[1].v),hole:0.62,sort:false,
+    marker:{colors:e.map(x=>x[1].c),line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',textfont:{size:11},
+    hovertemplate:'%{label}<br>%{percent}<extra></extra>'}],
+    {margin:{t:14,b:14,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false});
 }
 
 /* ============================ ALLOCATION ============================ */
@@ -1022,7 +1046,7 @@ function renderFooter(){
 }
 
 document.addEventListener('DOMContentLoaded', bootstrap);
-window.setTab=setTab; window.setOvWin=setOvWin; window.toggleBench=toggleBench;
+window.setTab=setTab; window.setOvWin=setOvWin; window.toggleBench=toggleBench; window.setOvDonut=setOvDonut; window.setOvMoversHz=setOvMoversHz;
 </script>
 </body>
 </html>
