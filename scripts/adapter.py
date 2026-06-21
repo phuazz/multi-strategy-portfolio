@@ -518,7 +518,7 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         if f > 1e-4 and c <= 1e-4: return "EXIT"
         return "ADD" if c > f else "TRIM"
 
-    weekly, detailed, prev, n_rebal = [], [], None, 0
+    weekly, prev, n_rebal = [], None, 0
     tsleeve, matrix_rows = {}, []          # ticker -> sleeve, and (date, weights) per week
     for d in grid:
         ton, roff = _state(tilts, d, "EM_TILT_ON"), _state(regime, d, "RISK_OFF")
@@ -552,7 +552,6 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         weekly.append({"date": d, "turnover": turn, "n": len(deltas)})
         if rec:
             n_rebal += 1
-            detailed.append({"date": d, "type": typ, "turnover": turn, "n": len(deltas), "deltas": deltas})
         prev = w
 
     all_t = sorted({t for _, w in matrix_rows for t in w})
@@ -572,8 +571,7 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         "ticker_name": {t: meta.get(t, {}).get("name", t) for t in sig},
     }
     return {"since": grid[0], "asOf": grid[-1], "count": n_rebal,
-            "log": detailed[::-1][:detail_weeks], "weekly": weekly,
-            "alloc_history": alloc_history, "reconstructed": True}
+            "weekly": weekly, "alloc_history": alloc_history, "reconstructed": True}
 
 
 # --- short-horizon P&L (model vs benchmarks) -------------------------------

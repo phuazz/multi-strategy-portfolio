@@ -543,7 +543,8 @@ function renderAllocation(){
         </div>
       </div>
       <div id="allocHist" class="chart" style="height:320px"></div>
-      <div class="card-note" style="margin-top:6px">Weekly target weights since inception (stacks to 100%). Watch the cash band swell in de-risk episodes and the rotation across sectors/themes. Holdings that never reached 1% are grouped as “Other”.</div>
+      <div class="card-note" style="margin-top:6px">Weekly target weights since inception (stacks to 100%). Watch the cash band swell in de-risk episodes and the rotation across sectors/themes. Transient names under 3% are grouped as “Other”. <strong>Click any week</strong> to see the exact portfolio on that date.</div>
+      <div id="allocPit"></div>
     </div>`:''}
     <div class="card">
       <div class="card-h"><div class="card-title">Model portfolio — target weights</div>
@@ -585,6 +586,24 @@ function buildAllocHistory(){
   plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:9}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
     yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},range:[0,100]},
     xaxis:{gridcolor:'#ededea',tickfont:{size:9},range:[xd[0],xd[xd.length-1]]}}));
+  if(el.removeAllListeners) el.removeAllListeners('plotly_click');
+  if(el.on) el.on('plotly_click', ev=>{ if(ev&&ev.points&&ev.points.length) showAllocAt(String(ev.points[0].x).slice(0,10)); });
+}
+function showAllocAt(dateStr){
+  const ah=DS.trades&&DS.trades.alloc_history, el=document.getElementById('allocPit'); if(!ah||!el) return;
+  const dates=ah.dates; let idx=dates.indexOf(dateStr);
+  if(idx<0){ idx=0; for(let i=0;i<dates.length;i++){ if(dates[i]<=dateStr) idx=i; else break; } }
+  const d=dates[idx];
+  const rows=Object.keys(ah.weights).map(t=>({ticker:t, w:ah.weights[t][idx]||0, sleeve:ah.ticker_sleeve[t]||'',
+    name:(ah.ticker_name||{})[t]||t})).filter(r=>r.w>1e-4).sort((a,b)=>b.w-a.w);
+  const chip=s=> (s==='Other'||s==='Cash') ? `<span class="muted" style="font-size:11px">${esc(s)}</span>` : sleeveChip(s);
+  el.innerHTML=`<div class="card-h" style="margin:16px 0 8px"><div class="card-title">Portfolio on ${fmtDate(d)}</div>
+    <div class="card-note">${rows.length} holdings · <a href="#" onclick="document.getElementById('allocPit').innerHTML='';return false;">clear ✕</a></div></div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th>Sleeve</th><th class="r">Weight</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr>
+      <td><strong>${esc(r.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(r.name)}</span></td>
+      <td>${chip(r.sleeve)}</td><td class="r num">${pct(r.w,1)}</td>
+      <td class="r" style="width:90px"><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,r.w/0.16*100).toFixed(0)}%;background:${SLEEVE_COLORS[r.sleeve]||'#8a8a82'}"></div></div></td></tr>`).join('')}</tbody></table></div>`;
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function exposureCard(title,id){ return `<div class="card"><div class="card-title" style="margin-bottom:12px">${title}</div><div id="${id}"></div></div>`; }
 function exposureBars(elId, mapping, colorFn, labelFn){
@@ -1038,20 +1057,27 @@ function trendBar(v){ if(!isNum(v)) return '<span class="muted">—</span>';
     </span></span>`;
 }
 function renderTrades(){
-  const t=DS.trades||{}, log=t.log||[]; const el=document.getElementById('tabContent');
-  if(!log.length){ el.innerHTML='<div class="loading">No rebalance history yet — the ledger seeds on the next build.</div>'; return; }
-  const latest=log[0];
+  const t=DS.trades||{}, ah=t.alloc_history; const el=document.getElementById('tabContent');
+  const actChip=a=>`<span class="act act-${(a||'').toLowerCase()}">${a}</span>`;
+  let latest;
+  if(ah && ah.dates && ah.dates.length){             // full-history blotter, derived from the weekly matrix
+    _blotter=_buildBlotterFromMatrix();
+    const li=ah.dates.length-1;
+    let deltas=_blotter.filter(b=>b.date===ah.dates[li]);
+    if(!deltas.length && _blotter.length) deltas=_blotter.filter(b=>b.date===_blotter[0].date);
+    latest={date:(deltas[0]?deltas[0].date:ah.dates[li]), type: ah.dates.length===1?'initial':'rebalance',
+      turnover:(t.weekly&&t.weekly[li]?t.weekly[li].turnover:null), n:deltas.length, deltas};
+  } else {                                           // fallback: forward ledger
+    const log=t.log||[]; if(!log.length){ el.innerHTML='<div class="loading">No trade history available.</div>'; return; }
+    latest=log[0]; _blotter=[]; log.forEach(e=>(e.deltas||[]).forEach(d=>_blotter.push(Object.assign({date:e.date},d))));
+  }
+  _actions=t.actions||[];
   const days=(Date.now()-new Date(latest.date+'T00:00:00').getTime())/86400000;
   const latestTitle = latest.type==='initial' ? 'Opening position — '+fmtDate(latest.date)
       : (days<=8?"This week's trades":'Latest rebalance')+' — '+fmtDate(latest.date);
-  const actChip=a=>`<span class="act act-${(a||'').toLowerCase()}">${a}</span>`;
-  const ACT_CLS={'De-risk':'derisk','Re-engage':'reengage','EM tilt on':'tilton','EM tilt off':'tiltoff'};
-  const actionChip=a=>`<span class="act act-${ACT_CLS[a]||'initial'}">${esc(a)}</span>`;
-  _actions=t.actions||[];
   const dRow=d=>`<tr><td>${actChip(d.action)} <strong>${esc(d.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(d.name)}</span></td>
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
-  _blotter=[]; log.forEach(e=> (e.deltas||[]).forEach(d=> _blotter.push(Object.assign({date:e.date,etype:e.type},d))));
   el.innerHTML = `
     <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Portfolio actions</strong> (below) highlights the macro de-risk and EM-tilt switches. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
@@ -1076,6 +1102,8 @@ function renderTrades(){
       <div class="card-h"><div class="card-title">Trade blotter</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input class="filter-input" id="blotQ" placeholder="search ticker / name" oninput="setBlotQ(this.value)">
+          <input type="date" class="filter-input" id="blotFrom" style="width:140px" onchange="setBlotFrom(this.value)" title="from date">
+          <input type="date" class="filter-input" id="blotTo" style="width:140px" onchange="setBlotTo(this.value)" title="to date">
           <div class="fbtns" id="blotFilter"></div><span class="card-note" id="blotCount"></span></div></div>
       <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Trade</th><th class="r">From</th><th class="r">To</th><th class="r">Δ weight</th></tr></thead>
       <tbody id="blotBody"></tbody></table></div>
@@ -1087,7 +1115,21 @@ function renderTrades(){
   if(_actions.length){ document.getElementById('actFilter').innerHTML=_actFilterChips(); renderActions(); }
   document.getElementById('blotFilter').innerHTML=_blotFilterChips();
   const bq=document.getElementById('blotQ'); if(bq) bq.value=state.blotQ||'';
+  if(_blotter.length){ const lo=_blotter[_blotter.length-1].date, hi=_blotter[0].date;
+    ['blotFrom','blotTo'].forEach(id=>{ const e=document.getElementById(id); if(e){ e.min=lo; e.max=hi; e.value=(id==='blotFrom'?state.blotFrom:state.blotTo)||''; } }); }
   renderBlotter();
+}
+function _buildBlotterFromMatrix(){
+  const ah=DS.trades.alloc_history; if(!ah) return [];
+  const dates=ah.dates, W=ah.weights, nm=ah.ticker_name||{}, out=[];
+  const tickers=Object.keys(W).filter(t=>t!=='Other');
+  for(let i=1;i<dates.length;i++){
+    for(const t of tickers){ const f=W[t][i-1]||0, c=W[t][i]||0, d=c-f;
+      if(Math.abs(d)>0.005){ const action=f<=1e-4&&c>1e-4?'NEW':(f>1e-4&&c<=1e-4?'EXIT':(c>f?'ADD':'TRIM'));
+        out.push({date:dates[i], ticker:t, name:nm[t]||t, from:f, to:c, delta:d, action}); } }
+  }
+  out.sort((a,b)=> a.date<b.date?1:a.date>b.date?-1:Math.abs(b.delta)-Math.abs(a.delta));   // newest first, biggest first
+  return out;
 }
 function _actChip(a){ return `<span class="act act-${(a||'').toLowerCase()}">${a}</span>`; }
 const _ACT_CLS={'De-risk':'derisk','Re-engage':'reengage','EM tilt on':'tilton','EM tilt off':'tiltoff'};
@@ -1106,9 +1148,12 @@ function _blotFilterChips(){ return [['all','All'],['NEW','New'],['ADD','Add'],[
   `<button class="fbtn ${(state.blotAct||'all')===k?'active':''}" onclick="setBlotAct('${k}')">${l}</button>`).join(''); }
 function setBlotAct(k){ state.blotAct=k; document.getElementById('blotFilter').innerHTML=_blotFilterChips(); renderBlotter(); }
 function setBlotQ(v){ state.blotQ=v; renderBlotter(); }
+function setBlotFrom(v){ state.blotFrom=v; renderBlotter(); }
+function setBlotTo(v){ state.blotTo=v; renderBlotter(); }
 function renderBlotter(){
-  const q=(state.blotQ||'').toUpperCase().trim(), af=state.blotAct||'all', b=document.getElementById('blotBody'); if(!b) return;
-  let rows=_blotter.filter(x=> (af==='all'||x.action===af) && (!q || (x.ticker||'').toUpperCase().includes(q) || (x.name||'').toUpperCase().includes(q)));
+  const q=(state.blotQ||'').toUpperCase().trim(), af=state.blotAct||'all', fr=state.blotFrom||'', to=state.blotTo||'', b=document.getElementById('blotBody'); if(!b) return;
+  let rows=_blotter.filter(x=> (af==='all'||x.action===af) && (!fr||x.date>=fr) && (!to||x.date<=to)
+    && (!q || (x.ticker||'').toUpperCase().includes(q) || (x.name||'').toUpperCase().includes(q)));
   const total=rows.length; rows=rows.slice(0,250);
   b.innerHTML = rows.length ? rows.map(x=>`<tr><td class="num" style="font-size:11px">${fmtDate(x.date)}</td>
     <td>${_actChip(x.action)} <strong>${esc(x.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(x.name)}</span></td>
@@ -1236,7 +1281,7 @@ function renderFooter(){
 
 document.addEventListener('DOMContentLoaded', bootstrap);
 window.setTab=setTab; window.setOvWin=setOvWin; window.toggleBench=toggleBench; window.setOvDonut=setOvDonut; window.setOvMoversHz=setOvMoversHz;
-window.setAllocGroup=setAllocGroup; window.setAllocWin=setAllocWin; window.setActFilter=setActFilter; window.setBlotAct=setBlotAct; window.setBlotQ=setBlotQ;
+window.setAllocGroup=setAllocGroup; window.setAllocWin=setAllocWin; window.setActFilter=setActFilter; window.setBlotAct=setBlotAct; window.setBlotQ=setBlotQ; window.setBlotFrom=setBlotFrom; window.setBlotTo=setBlotTo;
 </script>
 </body>
 </html>
