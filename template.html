@@ -750,6 +750,16 @@ function renderPerformance(){
         <div class="card-note" style="margin-top:6px">Annualised one-way turnover ≈ <strong>${pct(DS.trades.ann_turnover,0)}/yr</strong>. The backtest assumes ${DS.meta.cost_assumption_bps} bps switch cost only; thematic / EM / European names trade dearer, so realistic net is likely nearer the 15–20 bps rows.</div>
       </div>
     </div>`:''}
+    ${(s.yearly&&s.yearly.length)?`<div class="card">
+      <div class="card-title" style="margin-bottom:12px">Calendar-year returns vs S&amp;P 500</div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Year</th><th class="r">Model</th><th class="r">S&amp;P 500</th><th class="r">Excess</th></tr></thead><tbody>
+        ${s.yearly.slice().reverse().map(y=>`<tr><td><strong>${y.year}</strong>${y.partial?' <span class="muted" style="font-size:10px">partial</span>':''}</td>
+          <td class="r num ${signClass(y.model)}">${pctSigned(y.model)}</td>
+          <td class="r num ${signClass(y.spy)}">${pctSigned(y.spy)}</td>
+          <td class="r num ${signClass(y.excess)}" style="font-weight:600">${pctSigned(y.excess)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="card-note" style="margin-top:8px">Calendar-year total return; Excess = Model − S&amp;P 500 (red years lagged the index). 2018 (from the Nov inception) and the current year are partial. To diagnose a specific year, use the monthly heatmap below and the Allocation-over-time chart (Allocation tab) zoomed to that period.</div>
+    </div>`:''}
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Monthly returns (%)</div>
       <div style="overflow-x:auto" id="perfHeatmap"></div>

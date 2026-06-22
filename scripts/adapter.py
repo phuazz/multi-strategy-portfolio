@@ -284,9 +284,19 @@ def build_stats(model_bt, model_full, overlay, registry, benchmarks) -> dict:
                "maxdd": _r(float(metrics.drawdown_series(seg).min()), 4) if len(seg) else None,
                "months": round((model_full.index[-1] - pd.Timestamp(oos_start)).days / 30.44, 1)}
 
+    # Calendar-year returns, model vs S&P, for the by-year investor view.
+    spy_s = (metrics.equity_series(benchmarks["SPY"]["dates"], benchmarks["SPY"]["equity"])
+             if (benchmarks or {}).get("SPY") else None)
+    ym = metrics.yearly_returns(model_full)
+    ysp = metrics.yearly_returns(spy_s) if spy_s is not None else {}
+    yrs = sorted(ym)
+    yearly = [{"year": y, "model": _r(ym[y], 4), "spy": _r(ysp.get(y), 4),
+               "excess": _r(ym[y] - ysp[y], 4) if y in ysp else None,
+               "partial": (y == yrs[0] or y == yrs[-1])} for y in yrs]
+
     return {
         "sharpe_excess": _r(excess.get("sharpe")), "sortino_excess": _r(excess.get("sortino")),
-        "cash_cagr": _r(excess.get("cash_cagr")), "oos": oos,
+        "cash_cagr": _r(excess.get("cash_cagr")), "oos": oos, "yearly": yearly,
         **{k: _r(v) for k, v in full.items() if not isinstance(v, (dict, str))},
         "start": full["start"], "end": full["end"],
         "period_returns": {k: _r(v, 5) for k, v in full["period_returns"].items()},

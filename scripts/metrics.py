@@ -175,6 +175,21 @@ def monthly_matrix(eq: pd.Series) -> dict:
 
 
 # --- benchmark-relative ----------------------------------------------------
+def yearly_returns(eq: pd.Series) -> dict:
+    """Calendar-year total return {year: ret}. The first year runs from inception
+    to that year-end (partial); the current year is YTD."""
+    out = {}
+    if len(eq) < 2:
+        return out
+    for y in sorted({d.year for d in eq.index}):
+        in_y = eq[eq.index.year == y]
+        prior = eq[eq.index.year < y]
+        base = prior.iloc[-1] if len(prior) else in_y.iloc[0]
+        if base:
+            out[y] = float(in_y.iloc[-1] / base - 1.0)
+    return out
+
+
 def excess_sharpe_sortino(model: pd.Series, cash: pd.Series) -> dict:
     """Sharpe/Sortino on returns in excess of a cash (T-bill) series, not rf=0.
 
