@@ -106,3 +106,4 @@ breadth panel. Every build:
 ## Related
 
 - [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) — the strategy engine (upstream source).
+- [DESIGN.md](DESIGN.md) — target architecture for Navigo as a multi-strategy valuation layer (engines generate, Navigo values), and the contract each engine must publish. Proposal; the thin-renderer path above remains production until it lands.
