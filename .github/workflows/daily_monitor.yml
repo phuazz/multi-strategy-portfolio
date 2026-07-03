@@ -2,18 +2,22 @@ name: Daily monitor refresh
 
 # Rebuilds the monitor from the upstream breadth-thrust-etf engine outputs.
 #
-# Timing: Mon-Fri 22:10 UTC. The engine's own daily mark-to-market runs at
-# 21:30 UTC, so by 22:10 the raw live_track.json / risk_overlay.json on the
-# engine's main branch are fresh. This job fetches those, recomputes the
-# monitor's analytics + benchmarks, validates freshness, bakes the dashboard,
-# and publishes to GitHub Pages.
+# Timing: Mon-Fri 23:40 UTC (moved from 22:10 on 2026-07-03). The engine's
+# daily mark-to-market is SCHEDULED at 21:30 UTC but GitHub fires crons
+# late: its publishes were measured landing 22:35-23:18 UTC. A 22:10
+# monitor cron firing promptly could therefore fetch BEFORE the engine
+# published and bake yesterday's data as latest — a green run, no banner
+# (the price budget tolerates 1 day), silently wrong. 23:40 clears the
+# engine's observed tail; the capture-integrity step below emails if the
+# residual tail is ever hit. With this repo's own cron delays (measured
+# 62-90 min) the job lands ~00:40-01:10 UTC = 08:40-09:10 SGT.
 #
 # What it does NOT do: re-run the strategy. The monitor is a read-only consumer
 # of the engine's published outputs.
 
 on:
   schedule:
-    - cron: '10 22 * * 1-5'   # Mon-Fri 22:10 UTC (early morning SGT)
+    - cron: '40 23 * * 1-5'   # Mon-Fri 23:40 UTC (early morning SGT)
   workflow_dispatch:           # manual trigger
 
 permissions:
@@ -50,6 +54,39 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -q
 
+      # ----- Capture integrity (2026-07-03) -----
+      # Anchors the BAKED dataset's live as-of to the true NYSE calendar.
+      # warn (lag or non-ok health) -> email but still publish: this repo
+      # surfaces upstream problems, it does not go dark on them.
+      # fail (corrupt artefact) -> the job stops here, nothing publishes.
+      - name: Check capture integrity
+        id: capture
+        run: python scripts/check_capture_integrity.py
+
+      - name: Email capture warning
+        if: steps.capture.outputs.capture_warn == 'true'
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: '[WARN] Navigo monitor — ${{ steps.capture.outputs.summary }}'
+          # Ops alerts go to the operator only.
+          to: ${{ secrets.GMAIL_USER }}
+          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          body: |
+            ${{ steps.capture.outputs.detail }}
+
+            The dashboard has still been published (staleness is surfaced,
+            never hidden). If the engine published late, re-run this
+            workflow via the 'Run workflow' button once the engine data
+            is on main.
+
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
       - name: Commit refreshed output
         run: |
           git config --local user.email "actions@github.com"
@@ -57,3 +94,34 @@ jobs:
           git add docs/
           git diff --cached --quiet || git commit -m "Daily monitor refresh $(date -u +%Y-%m-%d)"
           git push origin HEAD:main || echo "Nothing to push"
+
+      # ----- Failure alert (2026-07-03) -----
+      # A fetch, build, test or capture failure previously died silently
+      # and the dashboard froze at its last committed state. if: failure()
+      # fires when any earlier step failed. Requires the GMAIL_USER and
+      # GMAIL_APP_PASSWORD repository secrets (same pair as the engine
+      # repo); until they are set this step errors harmlessly inside an
+      # already-failed run.
+      - name: Email failure alert
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: '[FAIL] Navigo monitor did not publish — dashboard frozen at last state'
+          to: ${{ secrets.GMAIL_USER }}
+          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          body: |
+            The scheduled monitor build failed. The deployed dashboard
+            stays at its last committed state until a run succeeds.
+
+            For a transient failure (network, yfinance, raw fetch),
+            'Re-run failed jobs' is fine. If the cause is upstream engine
+            data, fix the engine first, then start a NEW run here via the
+            'Run workflow' button.
+
+            Log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

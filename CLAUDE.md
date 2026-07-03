@@ -46,6 +46,19 @@ Preserve this: any new feed gets a freshness budget and a per-feed as-of on Data
 live mark-to-market extension must always render as a distinct segment, never spliced into the
 backtest curve silently.
 
+## Ops alerting and audit (2026-07-03)
+
+Three layers, mirroring the engine repo: (1) `scripts/check_capture_integrity.py` runs in the
+daily workflow — anchors the baked live as-of to the TRUE NYSE calendar
+(`scripts/nyse_sessions.py`, pandas_market_calendars); a lag or non-ok health warns by email
+but still publishes (surface, never hide); only a corrupt artefact blocks the commit. (2) Both
+failure and warn emails go to GMAIL_USER — the `GMAIL_USER` / `GMAIL_APP_PASSWORD` repository
+secrets must exist or the alert channel is dark. (3) `.github/workflows/sentinel.yml` (daily
+05:05 UTC) checks the DEPLOYED dataset independently of the build. The daily cron is 23:40 UTC
+deliberately — past the engine's measured publish tail, not its scheduled time; do not move it
+earlier. `VERIFY_DASHBOARD.md` is the manual deep-audit prompt; run it for any "is the
+dashboard fresh/working" question.
+
 ## Adding a portfolio
 
 Drop `portfolios/<new-id>.json` (copy the existing one; adjust source keys, sleeves, benchmarks,

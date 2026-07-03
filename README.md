@@ -88,8 +88,22 @@ copies it to `docs/index.html` and writes the dataset to `docs/data/`. Never edi
 
 ## Automation
 
-`.github/workflows/daily_monitor.yml` runs Mon–Fri 22:10 UTC (≈40 min after the engine's
-21:30 UTC daily refresh): fetch → build → validate → test → commit `docs/` → Pages.
+`.github/workflows/daily_monitor.yml` runs Mon–Fri 23:40 UTC: fetch → build → validate →
+test → capture-integrity check → commit `docs/` → Pages. The cron sits past the engine's
+*measured* publish tail (its 21:30 UTC daily has landed as late as 23:18 UTC) rather than
+its scheduled time — fetching before the engine publishes would bake yesterday's data as
+latest inside the freshness budget, silently. Publishes follow the engine's cadence rule:
+every Friday after the US close even on US market holidays, using the latest populated
+close.
+
+**Ops alerting (2026-07-03)**: the daily workflow emails the operator (GMAIL_USER) on any
+failure, and on a capture warning (baked live as-of behind the NYSE calendar, or baked
+health not `ok`) while still publishing — staleness is surfaced, never hidden. Outside-in,
+`.github/workflows/sentinel.yml` (daily 05:05 UTC = 13:05 SGT, sized to GitHub's
+cron-delay tail) fetches the DEPLOYED dataset and emails `[SENTINEL]` on session lag or a
+stale health level — it shares no state with the build, so it catches a green run that
+published wrong artefacts. Requires the `GMAIL_USER` / `GMAIL_APP_PASSWORD` repository
+secrets. `VERIFY_DASHBOARD.md` holds the manual deep-audit prompt.
 
 ## Data integrity
 

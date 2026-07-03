@@ -1,0 +1,78 @@
+name: Deployed-monitor sentinel
+
+# Outside-in verification of the LIVE dashboard, independent of the build
+# pipeline (ported from the breadth-thrust-etf ops stack, 2026-07-03).
+# Fetches the deployed dataset from GitHub Pages and alerts when its live
+# as-of lags the last completed NYSE session or its health level is
+# 'stale'. Because it shares no state with daily_monitor.yml, it catches
+# what that workflow cannot see about itself: a green run that published
+# stale artefacts, a Pages deploy that never happened, or a cron that
+# silently stopped firing (a dropped cron leaves no failure to look at).
+#
+# Schedule: daily 05:05 UTC (13:05 SGT).
+# Sized to the cron-delay TAIL, not the average: the monitor publishes
+# from a 23:40 UTC cron whose start this platform has delayed by up to
+# ~4h20m (measured on the engine repo), giving a worst-case publish
+# ~04:03 UTC. Never move this earlier than ~04:30 UTC — a false
+# [SENTINEL] alarm from a slow cron teaches the operator to ignore the
+# one email that must be read. Daily cadence (all 7 days) also
+# revalidates Friday's state across the weekend, confirming any
+# Saturday-morning manual recovery.
+#
+# Requires the GMAIL_USER and GMAIL_APP_PASSWORD repository secrets for
+# the alert email (same pair as the engine repo).
+
+on:
+  schedule:
+    - cron: '5 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install calendar dependency
+        run: pip install "pandas_market_calendars>=4.4"
+
+      - name: Check deployed dashboard against the NYSE calendar
+        run: python scripts/sentinel_check.py
+
+      - name: Email sentinel alert
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: '[SENTINEL] Navigo monitor: deployed dashboard is stale or unreachable'
+          to: ${{ secrets.GMAIL_USER }}
+          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          body: |
+            The DEPLOYED Navigo monitor does not show the last completed
+            NYSE session (or its own health banner says stale, or the
+            dataset is unreachable). This is the outside-in check — it
+            fires even when every build run looked green.
+
+            Diagnose: check the daily_monitor.yml runs and the engine
+            repo's alerts, then re-publish via the monitor's
+            'Run workflow' button once the cause is fixed.
+
+            Log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
