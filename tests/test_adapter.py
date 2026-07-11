@@ -5,7 +5,7 @@ sleeve weight, plus the EM tilt) and the exposure roll-ups.
 import adapter
 from config import load_registry
 
-REG = load_registry("navigo-systematic-trend")
+REG = load_registry("multi-strategy-portfolio")
 
 
 def _live(tilt=True):

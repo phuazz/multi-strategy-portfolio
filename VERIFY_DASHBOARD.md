@@ -1,7 +1,7 @@
 # VERIFY_DASHBOARD.md — freshness + refresh integrity audit
 
 Reusable prompt for auditing the live monitor at
-https://phuazz.github.io/navigo-systematic-trend/. Paste the block
+https://phuazz.github.io/multi-strategy-portfolio/. Paste the block
 between the rules into a Claude Code session at this project root. The
 audit is read-only — it changes nothing and proposes fixes rather than
 applying them.
@@ -15,7 +15,7 @@ sync with `.github/workflows/*.yml`, `scripts/validate.py` and
 
 ```
 [CONTEXT]
-- Dashboard: Navigo Systematic Trend model-portfolio monitor (Navigo
+- Dashboard: Multi-Strategy Portfolio model-portfolio monitor (Personal
   context — paper model, public GitHub Pages).
 - Architecture: READ-ONLY consumer of the breadth-thrust-etf engine.
   Daily it fetches the engine's data/*.json from raw.githubusercontent
@@ -86,7 +86,7 @@ silently wrong, and design around each:
    the past 7 calendar days. Every later check compares against these.
 
 2. Deployed as-of. Fetch (cache-busted)
-   https://phuazz.github.io/navigo-systematic-trend/data/portfolio-navigo-systematic-trend.json
+   https://phuazz.github.io/multi-strategy-portfolio/data/portfolio-multi-strategy-portfolio.json
    and read meta.live_asOf, meta.asOf, meta.built_at_utc, health.level.
    live_asOf must equal the last completed session (check 1); health
    feeds' levels must be consistent with their budgets. Tolerance: if
@@ -94,7 +94,7 @@ silently wrong, and design around each:
    publish may legitimately not have landed yet — report PASS with the
    cutover noted.
 
-3. Deployed = HEAD. gh api repos/phuazz/navigo-systematic-trend/pages/builds/latest
+3. Deployed = HEAD. gh api repos/phuazz/multi-strategy-portfolio/pages/builds/latest
    — status "built" and sha equal to origin/main HEAD. A failed LATEST
    Pages build is a FAIL even if an earlier build succeeded.
 

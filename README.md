@@ -1,14 +1,14 @@
-# Navigo Systematic Trend — Model Portfolio Monitor
+# Multi-Strategy Portfolio — Model Portfolio Monitor
 
-A real-time monitoring dashboard for Navigo Investment Management's first systematic
-**model (paper) portfolio**: *Navigo Systematic Trend* — a breadth- and trend-driven
+A real-time monitoring dashboard for a personal systematic
+**model (paper) portfolio**: *Multi-Strategy Portfolio* — a breadth- and trend-driven
 global ETF rotation with a systematic de-risk overlay. Published to GitHub Pages.
 
 > **Paper model.** This is a research and monitoring tool for a hypothetical model
 > portfolio. It is not investment advice, an offer, or a record of actual trading.
 > See the Methodology tab and the disclaimer footer.
 
-**Live dashboard:** https://phuazz.github.io/navigo-systematic-trend/
+**Live dashboard:** https://phuazz.github.io/multi-strategy-portfolio/
 
 ## What it monitors
 
@@ -34,7 +34,7 @@ fetches the engine's published outputs, normalises them into its own data contra
 recomputes presentation-grade analytics, validates freshness, and bakes the dashboard.
 
 ```
-breadth-thrust-etf (engine)            navigo-systematic-trend (this repo)
+breadth-thrust-etf (engine)            multi-strategy-portfolio (this repo)
   data/live_track.json        ──┐        scripts/sources.py   fetch raw @main + commit SHA
   data/multi_strategy.json    ──┼──▶      scripts/adapter.py   normalise → data contract
   data/risk_overlay.json      ──┤        scripts/metrics.py   stats / attribution / monthly
@@ -43,7 +43,7 @@ breadth-thrust-etf (engine)            navigo-systematic-trend (this repo)
                                           scripts/validate.py  fail-loud freshness / consistency
                                           scripts/pipeline.py  orchestrate → docs/
 
-  docs/data/portfolio-navigo-systematic-trend.json   ← the client fetches this
+  docs/data/portfolio-multi-strategy-portfolio.json   ← the client fetches this
   docs/index.html                                     ← baked from template.html
 ```
 
@@ -120,4 +120,4 @@ breadth panel. Every build:
 ## Related
 
 - [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) — the strategy engine (upstream source).
-- [DESIGN.md](DESIGN.md) — target architecture for Navigo as a multi-strategy valuation layer (engines generate, Navigo values), and the contract each engine must publish. Proposal; the thin-renderer path above remains production until it lands.
+- [DESIGN.md](DESIGN.md) — target architecture for the monitor as a multi-strategy valuation layer (engines generate, the monitor values), and the contract each engine must publish. Proposal; the thin-renderer path above remains production until it lands.

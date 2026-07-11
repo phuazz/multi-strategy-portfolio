@@ -73,10 +73,10 @@ jobs:
           secure: true
           username: ${{ secrets.GMAIL_USER }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: '[WARN] Navigo monitor — ${{ steps.capture.outputs.summary }}'
+          subject: '[WARN] Multi-Strategy monitor — ${{ steps.capture.outputs.summary }}'
           # Ops alerts go to the operator only.
           to: ${{ secrets.GMAIL_USER }}
-          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          from: 'Multi-Strategy Monitor Ops <${{ secrets.GMAIL_USER }}>'
           body: |
             ${{ steps.capture.outputs.detail }}
 
@@ -90,7 +90,7 @@ jobs:
       - name: Commit refreshed output
         run: |
           git config --local user.email "actions@github.com"
-          git config --local user.name "Navigo Monitor Bot"
+          git config --local user.name "Multi-Strategy Monitor Bot"
           git add docs/
           git diff --cached --quiet || git commit -m "Daily monitor refresh $(date -u +%Y-%m-%d)"
           git push origin HEAD:main || echo "Nothing to push"
@@ -112,9 +112,9 @@ jobs:
           secure: true
           username: ${{ secrets.GMAIL_USER }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: '[FAIL] Navigo monitor did not publish — dashboard frozen at last state'
+          subject: '[FAIL] Multi-Strategy monitor did not publish — dashboard frozen at last state'
           to: ${{ secrets.GMAIL_USER }}
-          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          from: 'Multi-Strategy Monitor Ops <${{ secrets.GMAIL_USER }}>'
           body: |
             The scheduled monitor build failed. The deployed dashboard
             stays at its last committed state until a run succeeds.

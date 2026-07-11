@@ -1,4 +1,4 @@
-"""Shared configuration for the Navigo model-portfolio monitor.
+"""Shared configuration for the Multi-Strategy Portfolio monitor.
 
 Loads the active portfolio registry (portfolios/<id>.json) and exposes a small
 set of paths and constants used across the pipeline. Keeping portfolio-specific
@@ -23,20 +23,20 @@ DOCS_INDEX = DOCS_DIR / "index.html"
 
 # The single portfolio shipped in v1. The pipeline is written to loop over a
 # list, so adding ids here (each with a portfolios/<id>.json) extends coverage.
-ACTIVE_PORTFOLIO_IDS = ["navigo-systematic-trend"]
+ACTIVE_PORTFOLIO_IDS = ["multi-strategy-portfolio"]
 
 # Trading-day convention: ~252 sessions a year. Stated once, reused everywhere.
 TRADING_DAYS_PER_YEAR = 252
 
-# Valuation layer (DESIGN.md Phase 1) — Navigo's own daily mark-to-market.
+# Valuation layer (DESIGN.md Phase 1) — the monitor's own daily mark-to-market.
 # DEFAULT OFF: the production path stays the thin renderer of the engine's
 # live_track, byte-for-byte. When enabled, the pipeline additionally computes
-# Navigo's independent mark and reconciles it against the engine's live_equity,
+# the monitor's independent mark and reconciles it against the engine's live_equity,
 # attaching the result under a distinct dataset "valuation" key (it never
-# overwrites the headline). Flip via the NAVIGO_VALUATION_LAYER env var
+# overwrites the headline). Flip via the MSP_VALUATION_LAYER env var
 # (1/true/yes/on) without editing code.
 VALUATION_LAYER_ENABLED = (
-    os.environ.get("NAVIGO_VALUATION_LAYER", "false").strip().lower()
+    os.environ.get("MSP_VALUATION_LAYER", "false").strip().lower()
     in ("1", "true", "yes", "on")
 )
 

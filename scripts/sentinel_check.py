@@ -37,7 +37,7 @@ from check_capture_integrity import evaluate_dataset  # noqa: E402
 from nyse_sessions import last_completed_session  # noqa: E402
 
 # The one Pages site this repo publishes. docs/ is served at the root.
-PAGES_BASE = "https://phuazz.github.io/navigo-systematic-trend"
+PAGES_BASE = "https://phuazz.github.io/multi-strategy-portfolio"
 
 FETCH_ATTEMPTS = 3
 FETCH_RETRY_SECONDS = 30

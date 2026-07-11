@@ -1,7 +1,7 @@
-"""Navigo's own daily mark-to-market valuation layer (Phase 1, flag-gated).
+"""The monitor's own daily mark-to-market valuation layer (Phase 1, flag-gated).
 
 Target architecture (DESIGN.md): engines *generate* (weekly target weights + the
-weekly NAV anchor), Navigo *values* (the daily mark). This module extends the
+weekly NAV anchor), the monitor *values* (the daily mark). This module extends the
 engine's weekly NAV anchor forward by marking the published ``effective_weights``
 — held FIXED from ``anchor_date`` (no intra-week trading) — to each subsequent
 available close, in the portfolio's base currency (USD), converting non-USD
@@ -168,7 +168,7 @@ def mark_to_market(live: dict, closes: dict, fx: dict, registry: dict,
 
 
 def reconcile(mark: dict, live: dict) -> dict:
-    """Compare Navigo's mark against the engine's own ``live_equity``.
+    """Compare the monitor's mark against the engine's own ``live_equity``.
 
     The whole point of Phase 1: prove the valuation logic reproduces the engine's
     daily mark. Returns absolute deviations in basis points on the overlapping
@@ -187,7 +187,7 @@ def reconcile(mark: dict, live: dict) -> dict:
     for d in overlap:
         e, n = float(eng[d]), float(nav[d])
         dev_bps = (n / e - 1.0) * 1e4 if e else float("nan")
-        per_date.append({"date": d, "engine": round(e, 6), "navigo": round(n, 6),
+        per_date.append({"date": d, "engine": round(e, 6), "monitor": round(n, 6),
                          "dev_bps": round(dev_bps, 3), "settled": d < freshest})
 
     settled = [r["dev_bps"] for r in per_date if r["settled"]]

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Navigo Systematic Trend — Model Portfolio Monitor</title>
+<title>Multi-Strategy Portfolio — Model Portfolio Monitor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -147,7 +147,7 @@ a{color:var(--b);text-decoration:none}
   <div id="staleBanner" class="stale-banner" style="display:none"></div>
   <div class="masthead">
     <div class="mh-left">
-      <h1 id="mhTitle">Navigo Systematic Trend</h1>
+      <h1 id="mhTitle">Multi-Strategy Portfolio</h1>
       <div class="mh-sub" id="mhSub">Systematic breadth- and trend-driven global ETF rotation</div>
     </div>
     <div class="mh-right" id="mhRight"></div>
@@ -161,7 +161,7 @@ a{color:var(--b);text-decoration:none}
 <script>
 "use strict";
 /* ============================ config + state ============================ */
-const DATA_FILE = 'data/portfolio-navigo-systematic-trend.json';
+const DATA_FILE = 'data/portfolio-multi-strategy-portfolio.json';
 let DS = null;
 const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1W', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
@@ -1317,7 +1317,7 @@ function renderMethod(){
 function renderFooter(){
   const m=DS.meta;
   document.getElementById('footer').innerHTML =
-    `<strong>Navigo Investment Management Pte. Ltd.</strong> — internal model-portfolio monitor. `+
+    `<strong>Multi-Strategy Portfolio</strong> — personal model-portfolio monitor. `+
     `This is a <strong>paper model portfolio</strong> for research and monitoring; it is not investment advice, an offer, or a record of actual trading. `+
     `Backtested results are hypothetical, partly in-sample, and net of an assumed ${m.cost_assumption_bps} bps switch cost only. Past performance does not guarantee future results.<br>`+
     `Intraday P&L is fetched live from public quotes in your browser (via a CORS proxy) and may be delayed or briefly unavailable; every other figure comes from the baked daily dataset.<br>`+

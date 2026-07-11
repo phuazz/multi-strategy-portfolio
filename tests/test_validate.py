@@ -7,7 +7,7 @@ import datetime as dt
 from config import load_registry
 import validate
 
-REG = load_registry("navigo-systematic-trend")
+REG = load_registry("multi-strategy-portfolio")
 RUN = dt.date(2026, 6, 20)
 
 

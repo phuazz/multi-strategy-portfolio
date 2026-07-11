@@ -1,6 +1,6 @@
 """Phase-1 valuation layer: reconciliation gate + the three silent-failure guards.
 
-The reconciliation gate is the whole point of Phase 1 — it proves Navigo's own
+The reconciliation gate is the whole point of Phase 1 — it proves the monitor's own
 mark reproduces the engine's daily ``live_equity`` from the same closes, so that
 when the engine's daily job is eventually retired (Phase 3) the headline NAV does
 not move. The fixture is a frozen snapshot (engine live_track + yfinance closes/FX
@@ -16,7 +16,7 @@ import pandas as pd
 import valuation
 from config import load_registry
 
-REG = load_registry("navigo-systematic-trend")
+REG = load_registry("multi-strategy-portfolio")
 FIXTURE = Path(__file__).parent / "fixtures" / "valuation_recon_2026-06-25.json"
 
 # Observed within-week noise floor on the settled days is <= 0.4 bps (identical
@@ -57,9 +57,9 @@ def test_reconciles_to_engine_live_equity():
     # Human-readable deviation table (visible under `pytest -s`).
     print("\n  reconciliation vs engine live_equity (anchor "
           f"{mark['anchor_date']} @ {mark['anchor_equity']}):")
-    print(f"  {'date':12s}{'engine':>11s}{'navigo':>11s}{'dev_bps':>10s}  seg")
+    print(f"  {'date':12s}{'engine':>11s}{'monitor':>11s}{'dev_bps':>10s}  seg")
     for r in rec["per_date"]:
-        print(f"  {r['date']:12s}{r['engine']:11.6f}{r['navigo']:11.6f}"
+        print(f"  {r['date']:12s}{r['engine']:11.6f}{r['monitor']:11.6f}"
               f"{r['dev_bps']:10.2f}  {'settled' if r['settled'] else 'run-day'}")
     print(f"  settled: max {rec['settled']['max_abs_bps']} bps, mean "
           f"{rec['settled']['mean_abs_bps']} bps (n={rec['settled']['n']}); "

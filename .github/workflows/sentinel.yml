@@ -62,11 +62,11 @@ jobs:
           secure: true
           username: ${{ secrets.GMAIL_USER }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: '[SENTINEL] Navigo monitor: deployed dashboard is stale or unreachable'
+          subject: '[SENTINEL] Multi-Strategy monitor: deployed dashboard is stale or unreachable'
           to: ${{ secrets.GMAIL_USER }}
-          from: 'Navigo Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          from: 'Multi-Strategy Monitor Ops <${{ secrets.GMAIL_USER }}>'
           body: |
-            The DEPLOYED Navigo monitor does not show the last completed
+            The DEPLOYED Multi-Strategy monitor does not show the last completed
             NYSE session (or its own health banner says stale, or the
             dataset is unreachable). This is the outside-in check — it
             fires even when every build run looked green.

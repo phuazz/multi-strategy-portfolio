@@ -92,7 +92,7 @@ def _cli() -> None:
     from config import load_registry
 
     ap = argparse.ArgumentParser(description="Fetch engine sources (debug).")
-    ap.add_argument("--portfolio", default="navigo-systematic-trend")
+    ap.add_argument("--portfolio", default="multi-strategy-portfolio")
     ap.add_argument("--local", default=None, help="path to a local breadth-thrust-etf checkout")
     args = ap.parse_args()
 

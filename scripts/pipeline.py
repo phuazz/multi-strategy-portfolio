@@ -100,7 +100,7 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     }
 
     # Valuation layer (DESIGN.md Phase 1), default OFF. When enabled, compute
-    # Navigo's own daily mark and reconcile it against the engine's live_equity,
+    # the monitor's own daily mark and reconcile it against the engine's live_equity,
     # attaching it under a distinct key. The dataset is otherwise untouched, so
     # the off-path production output is byte-for-byte identical to the renderer.
     if VALUATION_LAYER_ENABLED:
@@ -186,7 +186,7 @@ def bake_template() -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Build the Navigo model-portfolio monitor.")
+    ap = argparse.ArgumentParser(description="Build the Multi-Strategy Portfolio monitor.")
     ap.add_argument("--local", default=None, help="path to a local breadth-thrust-etf checkout")
     ap.add_argument("--no-benchmarks", action="store_true", help="skip yfinance (fast offline build)")
     ap.add_argument("--portfolio", default=None, help="build only this portfolio id")

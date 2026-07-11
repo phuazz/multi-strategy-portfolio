@@ -1,14 +1,14 @@
-# Navigo Systematic Trend — Working Notes
+# Multi-Strategy Portfolio — Working Notes
 
 Durable context for future sessions on this repository. Layers on the vault `CLAUDE.md`.
 
 ## What this project is
 
-A monitoring dashboard for Navigo's first systematic **model (paper) portfolio**. It is a
+A monitoring dashboard for a personal systematic **model (paper) portfolio**. It is a
 **read-only consumer** of the [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf)
 engine: it fetches that engine's daily JSON outputs, normalises them, recomputes analytics,
 and bakes a Portfolio-Command-Centre-styled dashboard to GitHub Pages. It never re-runs the
-strategy. Context is Navigo (the fund), not CGSI or Personal.
+strategy. Context is Personal (own book), not Navigo or CGSI. Renamed from navigo-systematic-trend on 2026-07-11; strategy, engine and contract unchanged.
 
 ## Hard rules
 
@@ -33,7 +33,7 @@ npx serve docs                             # preview
 
 ## File sizes
 
-`template.html` is ~70 KB and safe to read. `docs/index.html` is a baked copy of it.
+`template.html` is ~105 KB and safe to read. `docs/index.html` is a baked copy of it.
 `docs/data/portfolio-*.json` is ~450 KB (full equity histories + per-holding price panels for
 the expandable Allocation charts) — read structure, not blindly.
 

@@ -1,4 +1,4 @@
-r"""Build the Navigo Systematic Trend risk visuals + trigger numbers for the digest.
+r"""Build the Multi-Strategy Portfolio risk visuals + trigger numbers for the digest.
 
 Produces, in the output directory:
   - breadth_gauge.png       : S&P 500 breadth vs the de-risk / re-engage thresholds
@@ -28,7 +28,7 @@ from pathlib import Path
 RAW = "https://raw.githubusercontent.com/phuazz/breadth-thrust-etf/main/data"
 FILES = ["risk_overlay.json", "live_track.json", "holdings_prices_1y.json"]
 PROXY = {"IUES": "XLE", "IUUS": "XLU", "IUSP": "XLRE", "IUMS": "XLB"}
-REGISTRY = Path(__file__).resolve().parent.parent / "portfolios" / "navigo-systematic-trend.json"
+REGISTRY = Path(__file__).resolve().parent.parent / "portfolios" / "multi-strategy-portfolio.json"
 
 
 def load(name, local):
