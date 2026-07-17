@@ -19,6 +19,10 @@
   --a:#b45309; --a-bg:rgba(180,83,9,0.07); --a-bg2:rgba(180,83,9,0.14);
   --p:#7c3aed; --p-bg:rgba(124,58,237,0.06);
   --c:#0891b2; --c-bg:rgba(8,145,178,0.06);
+  /* -text variants per C:\dev\design.md — for TEXT; the values above are for
+     fills, borders and large type. At 11px the base colours fail WCAG AA. */
+  --g-text:#146c43; --r-text:#a93226; --b-text:#1d4ed8; --a-text:#92400e;
+  --p-text:#7c3aed; --c-text:#0e7490; --t3-text:#66665e;
   --serif:'Instrument Serif',Georgia,serif;
   --sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
   --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
@@ -33,14 +37,14 @@ body{background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:14px
   -webkit-font-smoothing:antialiased;padding:0 22px 60px}
 .shell{max-width:1280px;margin:0 auto}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.pos{color:var(--g)} .neg{color:var(--r)} .muted{color:var(--t3)}
-a{color:var(--b);text-decoration:none}
+.pos{color:var(--g-text)} .neg{color:var(--r-text)} .muted{color:var(--t3-text)}
+a{color:var(--b-text);text-decoration:none}
 
 /* stale banner */
 .stale-banner{margin:16px 0 0;padding:12px 18px;border-radius:var(--radius);font-weight:600;font-size:13px;
   display:flex;align-items:center;gap:10px}
-.stale-banner.warn{background:var(--a-bg2);color:var(--a);border:1px solid rgba(180,83,9,0.3)}
-.stale-banner.stale{background:var(--r-bg2);color:var(--r);border:1px solid rgba(192,57,43,0.35)}
+.stale-banner.warn{background:var(--a-bg2);color:var(--a-text);border:1px solid rgba(180,83,9,0.3)}
+.stale-banner.stale{background:var(--r-bg2);color:var(--r-text);border:1px solid rgba(192,57,43,0.35)}
 
 /* masthead */
 .masthead{padding:26px 0 20px;border-bottom:2px solid var(--t1);margin-bottom:22px;
@@ -50,20 +54,20 @@ a{color:var(--b);text-decoration:none}
 .mh-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .pill{padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.5px;
   text-transform:uppercase;border:1px solid var(--bd2);background:var(--bg2);color:var(--t2);white-space:nowrap}
-.pill-paper{background:var(--a-bg);color:var(--a);border-color:rgba(180,83,9,0.3)}
-.pill-on{background:var(--g-bg);color:var(--g);border-color:rgba(26,135,84,0.3)}
-.pill-off{background:var(--r-bg);color:var(--r);border-color:rgba(192,57,43,0.3)}
-.pill-health-ok{background:var(--g-bg);color:var(--g);border-color:rgba(26,135,84,0.3)}
-.pill-health-warn{background:var(--a-bg);color:var(--a);border-color:rgba(180,83,9,0.3)}
-.pill-health-stale{background:var(--r-bg);color:var(--r);border-color:rgba(192,57,43,0.3)}
+.pill-paper{background:var(--a-bg);color:var(--a-text);border-color:rgba(180,83,9,0.3)}
+.pill-on{background:var(--g-bg);color:var(--g-text);border-color:rgba(26,135,84,0.3)}
+.pill-off{background:var(--r-bg);color:var(--r-text);border-color:rgba(192,57,43,0.3)}
+.pill-health-ok{background:var(--g-bg);color:var(--g-text);border-color:rgba(26,135,84,0.3)}
+.pill-health-warn{background:var(--a-bg);color:var(--a-text);border-color:rgba(180,83,9,0.3)}
+.pill-health-stale{background:var(--r-bg);color:var(--r-text);border-color:rgba(192,57,43,0.3)}
 
 /* KPI strip */
 .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--bd);
   border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px}
 .kpi{background:var(--bg2);padding:14px 16px;min-width:0}
-.kpi-label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px}
+.kpi-label{font-size:10px;color:var(--t3-text);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px}
 .kpi-val{font-size:21px;font-weight:700;letter-spacing:-0.5px;font-variant-numeric:tabular-nums;line-height:1.1}
-.kpi-sub{font-size:11px;color:var(--t3);margin-top:3px}
+.kpi-sub{font-size:11px;color:var(--t3-text);margin-top:3px}
 
 /* P&L strip */
 .pnl-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--bd);border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:18px}
@@ -77,7 +81,7 @@ a{color:var(--b);text-decoration:none}
 .tab-bar{display:flex;gap:0;border-bottom:1px solid var(--bd);margin-bottom:22px;overflow-x:auto;
   -webkit-overflow-scrolling:touch;scrollbar-width:none}
 .tab-bar::-webkit-scrollbar{display:none}
-.tab{padding:11px 18px;font-size:13.5px;font-weight:600;color:var(--t3);cursor:pointer;border:none;
+.tab{padding:11px 18px;font-size:13.5px;font-weight:600;color:var(--t3-text);cursor:pointer;border:none;
   background:none;position:relative;white-space:nowrap;min-height:44px;letter-spacing:0.2px}
 .tab:hover{color:var(--t1)}
 .tab.active{color:var(--t1)}
@@ -88,14 +92,14 @@ a{color:var(--b);text-decoration:none}
   padding:20px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
 .card-h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 .card-title{font-size:15px;font-weight:700;letter-spacing:-0.2px}
-.card-note{font-size:12px;color:var(--t3)}
+.card-note{font-size:12px;color:var(--t3-text)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-.section-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);font-weight:700;margin:6px 0 10px}
+.section-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--t3-text);font-weight:700;margin:6px 0 10px}
 
 /* filter buttons */
 .fbtn{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--bd);
-  background:var(--bg2);color:var(--t3);min-height:32px}
+  background:var(--bg2);color:var(--t3-text);min-height:32px}
 .fbtn.active{background:var(--t1);color:var(--bg2);border-color:var(--t1)}
 .fbtn:hover:not(.active){border-color:var(--t2);color:var(--t2)}
 .fbtns{display:flex;gap:6px;flex-wrap:wrap}
@@ -103,7 +107,7 @@ a{color:var(--b);text-decoration:none}
 /* tables */
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl thead th{padding:9px 10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;
-  color:var(--t3);font-weight:700;border-bottom:2px solid var(--bd);background:var(--bg3);white-space:nowrap}
+  color:var(--t3-text);font-weight:700;border-bottom:2px solid var(--bd);background:var(--bg3);white-space:nowrap}
 .tbl tbody tr{border-bottom:1px solid var(--bd)}
 .tbl tbody tr:hover{background:var(--bg-hover)}
 .tbl tbody td{padding:9px 10px;vertical-align:middle}
@@ -117,22 +121,22 @@ a{color:var(--b);text-decoration:none}
 .bar-track{background:var(--bg4);border-radius:4px;height:8px;overflow:hidden;min-width:48px}
 .bar-fill{height:100%;border-radius:4px}
 .chart{width:100%}
-.footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--bd);font-size:11.5px;color:var(--t3);line-height:1.6}
+.footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--bd);font-size:11.5px;color:var(--t3-text);line-height:1.6}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px}
-.kv .k{color:var(--t3)} .kv .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.kv .k{color:var(--t3-text)} .kv .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .callout{background:var(--bg3);border-left:3px solid var(--bd-strong);padding:12px 16px;border-radius:6px;font-size:13px;color:var(--t2);line-height:1.6}
-.loading{padding:80px 20px;text-align:center;color:var(--t3);font-size:15px}
-.hint{background:var(--b-bg);border:1px solid var(--b-bg2);color:var(--b);font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px}
+.loading{padding:80px 20px;text-align:center;color:var(--t3-text);font-size:15px}
+.hint{background:var(--b-bg);border:1px solid var(--b-bg2);color:var(--b-text);font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px}
 .filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:32px;width:150px;background:var(--bg2);color:var(--t1)}
 .filter-input:focus{outline:none;border-color:var(--t2)}
 .row-exp{cursor:pointer}
 .row-exp:hover{background:var(--bg-hover)}
-.exp-ind{display:inline-block;width:12px;color:var(--t3);font-size:9px}
+.exp-ind{display:inline-block;width:12px;color:var(--t3-text);font-size:9px}
 .exp-cell{background:var(--bg3);padding:0 !important}
 .exp-panel{padding:16px 18px}
 .chip{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;margin:0 6px 8px 0;background:var(--bg2);border:1px solid var(--bd);font-variant-numeric:tabular-nums}
-.chip-bull{background:var(--g-bg);color:var(--g);border-color:rgba(26,135,84,0.3)}
-.chip-bear{background:var(--r-bg);color:var(--r);border-color:rgba(192,57,43,0.3)}
+.chip-bull{background:var(--g-bg);color:var(--g-text);border-color:rgba(26,135,84,0.3)}
+.chip-bear{background:var(--r-bg);color:var(--r-text);border-color:rgba(192,57,43,0.3)}
 .act{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:0.3px;color:#fff;min-width:36px;text-align:center}
 .act-new{background:#1a8754} .act-add{background:#22a366} .act-trim{background:#b45309} .act-exit{background:#c0392b} .act-initial{background:#8a8a82}
 .act-derisk{background:#c0392b} .act-reengage{background:#1a8754} .act-tilton{background:#0891b2} .act-tiltoff{background:#8a8a82}
@@ -710,7 +714,7 @@ function renderPerformance(){
       <div class="card-h">
         <div class="card-title">Cumulative return — model vs benchmarks</div>
         <div style="display:flex;gap:14px;align-items:center">
-          <label style="font-size:12px;color:var(--t3);display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
+          <label style="font-size:12px;color:var(--t3-text);display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
           <div id="perfWinBtns"></div>
         </div>
       </div>
@@ -981,7 +985,7 @@ function renderRisk(){
         <div style="position:relative;height:26px;border-radius:6px;overflow:hidden;background:linear-gradient(90deg,#c0392b 0%,#c0392b ${offT}%,#b45309 ${offT}%,#b45309 ${onT}%,#1a8754 ${onT}%,#1a8754 100%);opacity:0.85">
           <div style="position:absolute;top:-3px;bottom:-3px;left:${br}%;width:3px;background:#1a1a18;box-shadow:0 0 0 2px #fff"></div>
         </div>
-        <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px"><span>0</span><span>off ${offT}%</span><span>on ${onT}%</span><span>100</span></div>
+        <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3-text);margin-top:4px"><span>0</span><span>off ${offT}%</span><span>on ${onT}%</span><span>100</span></div>
         <div class="callout" style="margin-top:14px;font-size:12px">Below ${offT.toFixed(0)}% breadth → shift ${(rg.derisk_fraction*100).toFixed(0)}% of NAV to ${rg.fallback_ticker}. Re-engage above ${onT.toFixed(0)}%.</div>
       </div>
       <div class="card">
@@ -1060,7 +1064,7 @@ function setRiskWin(k){ state.riskWindow=k; document.getElementById('riskWinBtns
 function renderSignals(){
   const sig=DS.signals, sm=DS.weights.sleeve_meta;
   const order=['A','B','C','D']; const el=document.getElementById('tabContent');
-  el.innerHTML = `<div class="callout" style="margin-bottom:18px">Each sleeve below shows its <strong>current holdings and weights</strong> — the live output of the breadth / trend / momentum signal — with each holding versus its 200-day moving average. The <strong>Trend (1Y)</strong> sparkline shows the past year's price coloured <span style="color:var(--g);font-weight:600">green</span> when above its 200-day MA and <span style="color:var(--r);font-weight:600">red</span> when below — the trend signal's history.</div>
+  el.innerHTML = `<div class="callout" style="margin-bottom:18px">Each sleeve below shows its <strong>current holdings and weights</strong> — the live output of the breadth / trend / momentum signal — with each holding versus its 200-day moving average. The <strong>Trend (1Y)</strong> sparkline shows the past year's price coloured <span style="color:var(--g-text);font-weight:600">green</span> when above its 200-day MA and <span style="color:var(--r-text);font-weight:600">red</span> when below — the trend signal's history.</div>
     <div class="grid2">${order.filter(c=>sig[c]&&sig[c].length).map(c=>`
       <div class="card">
         <div class="card-h"><div class="card-title">${sleeveChip(c)} ${esc((sm[c]||{}).name||c)}</div><div class="card-note">${pct((sm[c]||{}).alloc,0)} of NAV</div></div>
