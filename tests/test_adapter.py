@@ -9,32 +9,41 @@ REG = load_registry("multi-strategy-portfolio")
 
 
 def _live(tilt=True):
+    # Post-Phase-29 book: EEM is OVERLAY-ONLY (removed from the Strategy B
+    # rotation universe on 2026-07-02), so it appears solely as the 10% tilt
+    # leg when the tilt is on, and not at all when it is off. The registry's
+    # etf_meta accordingly tags EEM sleeve TILT (implementation-audit item
+    # D2, closed 2026-07-18).
+    eff = {"SOXX": 0.13583, "SPY": 0.04958, "EXH1": 0.07214, "SHY": 0.00003}
+    if tilt:
+        eff["EEM"] = 0.10
     return {
         "computed_at_utc": "2026-06-19T22:50:00Z",
         "eem_tilt_active": tilt,
         "regime_state": "RISK_ON",
         "anchor_date": "2026-06-17", "anchor_equity": 2.9638,
         "live_dates": ["2026-06-18"], "live_equity": [3.0052],
-        # Effective weights consistent with the sleeve weights below + 10% tilt.
-        "effective_weights": {"EEM": 0.14958, "SOXX": 0.13583, "EXH1": 0.07214, "SHY": 0.00003},
+        "effective_weights": eff,
         "sleeve_extensions": {
             "strategy_a": {"weights": {"SOXX": 0.3881}},
-            "strategy_b": {"weights": {"EEM": 0.1983}},
+            "strategy_b": {"weights": {"SPY": 0.1983}},
             "strategy_c": {"weights": {}},
             "strategy_d": {"weights": {"EXH1": 0.3607}},
         },
     }
 
 
-def test_eem_build_combines_sleeve_b_and_tilt():
+def test_eem_build_is_tilt_only_post_phase29():
     w = adapter.build_weights(_live(tilt=True), REG)
     eem = next(r for r in w["rows"] if r["ticker"] == "EEM")
-    sleeves = {b["sleeve"] for b in eem["build"]}
-    assert sleeves == {"B", "TILT"}
+    assert {b["sleeve"] for b in eem["build"]} == {"TILT"}
     total = sum(b["contrib"] for b in eem["build"])
     assert abs(total - eem["weight"]) < 1e-3          # reconstruct the effective weight
-    # Sleeve B allocation is reduced to 25% while the tilt is on.
-    b_leg = next(b for b in eem["build"] if b["sleeve"] == "B")
+    assert abs(eem["weight"] - 0.10) < 1e-9
+    # Sleeve B's allocation is reduced to 25% while the tilt is on — visible
+    # on a genuine B holding's build leg.
+    spy = next(r for r in w["rows"] if r["ticker"] == "SPY")
+    b_leg = next(b for b in spy["build"] if b["sleeve"] == "B")
     assert abs(b_leg["alloc"] - 0.25) < 1e-9
 
 
@@ -108,9 +117,10 @@ def test_weight_history_reconstruction_and_tilt():
     assert abs(h2["alloc_history"]["weights"]["EEM"][0] - (0.25 * 0.5 + 0.10)) < 1e-6   # B at 25% + 10% tilt
 
 
-def test_tilt_off_drops_tilt_leg_and_restores_b_alloc():
+def test_tilt_off_drops_eem_and_restores_b_alloc():
     w = adapter.build_weights(_live(tilt=False), REG)
-    eem = next(r for r in w["rows"] if r["ticker"] == "EEM")
-    assert all(b["sleeve"] != "TILT" for b in eem["build"])
-    b_leg = next(b for b in eem["build"] if b["sleeve"] == "B")
+    # Post-Phase-29 the book holds EEM only via the tilt: tilt off -> no row.
+    assert all(r["ticker"] != "EEM" for r in w["rows"])
+    spy = next(r for r in w["rows"] if r["ticker"] == "SPY")
+    b_leg = next(b for b in spy["build"] if b["sleeve"] == "B")
     assert abs(b_leg["alloc"] - 0.35) < 1e-9           # full 35% when tilt is off
