@@ -100,7 +100,7 @@
     "PHO": {"name": "Invesco Water Resources", "sleeve": "C", "assetClass": "Equity", "geo": "US", "theme": "Water", "tradeAs": "PHO"},
     "IHI": {"name": "iShares US Medical Devices", "sleeve": "C", "assetClass": "Equity", "geo": "US", "theme": "Medical Devices", "tradeAs": "IHI"},
     "EXV3": {"name": "Stoxx Europe 600 Technology", "sleeve": "D", "assetClass": "Equity", "geo": "Europe", "theme": "Technology", "tradeAs": "EXV3.DE"},
-    "EXH3": {"name": "Stoxx Europe 600 Industrial Goods & Services", "sleeve": "D", "assetClass": "Equity", "geo": "Europe", "theme": "Industrials", "tradeAs": "EXH3.DE"},
+    "EXH3": {"name": "Stoxx Europe 600 Industrial Goods & Services", "sleeve": "D", "assetClass": "Equity", "geo": "Europe", "theme": "Industrials", "tradeAs": "EXH4.DE"},
     "SHY":       {"name": "iShares 1-3Y Treasury",           "sleeve": "CASH", "assetClass": "Fixed Income", "geo": "US",     "theme": "Defensive Cash",    "tradeAs": "SHY"}
   }
 }

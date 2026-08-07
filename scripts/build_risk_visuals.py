@@ -12,7 +12,9 @@ prose. This encapsulates two easy-to-get-wrong details:
      not a percentage. Multiply by 100.
   2. Several book tickers are not keyed directly in the price panel: the LSE-listed
      iShares use US proxies (IUES->XLE, IUUS->XLU, IUSP->XLRE, IUMS->XLB) and the
-     Xetra lines use a .DE suffix (EXH1->EXH1.DE). Map before reading.
+     Xetra lines carry their own traded ticker (EXH1->EXH1.DE, and EXH3->EXH4.DE,
+     which is NOT the panel key plus ".DE"). Resolve through the registry's
+     `tradeAs`, never by appending a suffix -- see price_key().
 
 Usage:
     python build_risk_visuals.py --out <dir>                     # fetch engine data @main
@@ -40,10 +42,18 @@ def load(name, local):
 
 
 def price_key(tk, prices, meta):
+    """Resolve a book ticker to its key in the engine price panel.
+
+    The registry's ``tradeAs`` is the ONLY authority for a Xetra line. There is
+    deliberately no ``tk + ".DE"`` fallback: appending the suffix to the panel
+    key is what let sleeve D signal on Industrial Goods & Services breadth while
+    pricing EXH3.DE, the Food & Beverage fund, from Phase 4 until 2026-08-03.
+    The panel key ("EXH3") is an internal panel id, not a Xetra ticker, and the
+    two are not interchangeable. See the engine's etf_registry.py EXH3 entry and
+    reviews/2026-08-03_sleeve-d-exh3-correction.md.
+    """
     if tk in prices:
         return tk
-    if tk + ".DE" in prices:
-        return tk + ".DE"
     tr = meta.get(tk, {}).get("tradeAs")
     if tr and tr in prices:
         return tr
