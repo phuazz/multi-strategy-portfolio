@@ -155,8 +155,35 @@ def main():
         k = price_key(tk, hp, meta)
         week_ago[tk] = prox_pct_week_ago(hp[k]) if k else (None, None)
 
+    # Per-ticker panel currency. `prices_asof` above is a max() across the
+    # held series, so ONE lagging line is invisible in the header stamp — the
+    # digest, the factsheet and this file all then imply a currency the panel
+    # does not have. On 2026-08-10 EEM (10.0% of NAV, the largest line) sat on
+    # a 2026-08-03 bar under a 2026-08-07 stamp, and its published
+    # +7.3%-above-200-DMA was computed on the stale bar. This is the same
+    # class of defect as `uncovered_holdings` — a series that is PRESENT but
+    # not current, rather than absent — so it is reported the same way:
+    # loudly, and carried in the JSON so consumers can show the gap.
+    stale_holdings = []
+    for tk, w, v, s in rows:
+        k = price_key(tk, hp, meta)
+        d = hp[k]["dates"][-1] if (k and hp[k].get("dates")) else None
+        if d and prices_asof and d < prices_asof:
+            stale_holdings.append({"ticker": tk, "weight_pct": round(w * 100, 1),
+                                   "last_bar": d, "sleeve": s})
+    stale_nav = round(sum(h["weight_pct"] for h in stale_holdings), 1)
+    if stale_holdings:
+        print(f"WARN: {len(stale_holdings)} holding(s) behind the {prices_asof} "
+              f"panel date ({stale_nav}% of NAV): "
+              + ", ".join(f"{h['ticker']} ({h['last_bar']})" for h in stale_holdings)
+              + " — their 200-DMA proximity is computed on the stale bar")
+
     triggers = {
         "as_of_prices": prices_asof,
+        "as_of_prices_oldest": min((h["last_bar"] for h in stale_holdings),
+                                   default=prices_asof),
+        "panel_current_pct_nav": round(100.0 - stale_nav, 1),
+        "stale_holdings": stale_holdings,
         "breadth_as_of": breadth_asof,
         "breadth": round(br, 4),
         "off_threshold": off,
