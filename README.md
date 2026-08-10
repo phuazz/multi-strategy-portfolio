@@ -59,6 +59,15 @@ new registry file (and an adapter if its source shape differs) — not a restruc
 
 ## Dashboard tabs
 
+Above the tabs, a **headline synthesis line** states in one sentence what the KPI strip's
+eight facts add up to: the model's YTD return, how far ahead of or behind each house
+comparator it stands, and the computed risk state (gate, EM tilt, drawdown, cash) beneath.
+Both comparators — the S&P 500 and a global 60/40 — are differenced against figures from the
+same `metrics.period_returns` call over the same window, so the "pp ahead" arithmetic is
+like-for-like; per-figure tooltips carry the basis and the as-at date. A US-equity-only anchor
+is deliberately not used alone, as it would flatter or punish a global multi-asset rotation on
+asset mix. No currency figure appears in the line: this is a paper model with no capital.
+
 **Overview** · **Allocation** · **Performance** · **Attribution** · **Risk & Regime** ·
 **Signals** · **Data Health** · **Methodology** — built so a performance analyst, a CIO,
 and a quant PM each find what they look for: benchmark-relative performance and capture;
