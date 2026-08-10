@@ -219,6 +219,13 @@ const signClass = v => !isNum(v) ? '' : v>0 ? 'pos' : v<0 ? 'neg' : '';
 const colored = (txt,v) => `<span class="${signClass(v)}">${txt}</span>`;
 function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
 function fmtDateShort(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
+/* Weekday-carrying form. Every rebalance falls on a Friday and the weekday is
+   what makes that convention self-evident, so the digest prints it. Intl does
+   the derivation — no weekday is ever computed by hand. */
+function fmtDateDow(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00');
+  return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
+          .replace(',','');   // "Fri, 7 Aug 2026" -> "Fri 7 Aug 2026"
+}
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ============================ Plotly base ============================ */
@@ -521,7 +528,7 @@ function renderWhatChanged(){
   };
 
   const lDeltas=latest.deltas||[];
-  let body=sect(`Latest rebalance · ${fmtDate(latest.date)}`,
+  let body=sect(`Latest rebalance · decided ${fmtDateDow(latest.date)}`,
                 `${pct(latest.turnover,1)} turnover · ${plural(lDeltas.length)}`)
          + rows(lDeltas);
 
@@ -533,7 +540,7 @@ function renderWhatChanged(){
       +` (below ${pct(p10,1)} turnover; the median is ${pct(med,1)}).${sub?'':' No larger recent rebalance to show.'}</div>`;
     if(sub){
       const sd=blotterAll().filter(b=>b.date===sub.date);
-      body+=sect(`Last substantive rebalance · ${fmtDate(sub.date)}`,
+      body+=sect(`Last substantive rebalance · decided ${fmtDateDow(sub.date)}`,
                  `${pct(sub.turnover,1)} turnover · ${plural(sd.length)}`) + rows(sd);
     }
   }
@@ -554,10 +561,17 @@ function renderWhatChanged(){
       +(tilt.enabled?`; EM tilt <strong>${tilt.active?'on':'off'}</strong> since ${fmtDate(tilt.since)}`:'')+`.</div>`;
   }
 
+  // The rows look like a blotter, so the card states plainly that they are not
+  // one. The weights are decided at the Friday close shown and first earn on
+  // the following session — every sleeve applies weight_panel.shift(1), and the
+  // blend takes each day's return on the prior day's weights before snapping to
+  // target. Labelling the Friday as the rebalance alone reads as "traded that
+  // day"; it is the decision date.
   return `<div class="card">
     <div class="card-h"><div class="card-title">What changed</div>
       <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
-    ${body}</div>`;
+    ${body}
+    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. Each set is decided at the Friday close shown and first earns on the following trading session.</div></div>`;
 }
 
 /* ============================ OVERVIEW ============================ */

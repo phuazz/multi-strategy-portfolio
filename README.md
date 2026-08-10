@@ -68,6 +68,12 @@ like-for-like; per-figure tooltips carry the basis and the as-at date. A US-equi
 is deliberately not used alone, as it would flatter or punish a global multi-asset rotation on
 asset mix. No currency figure appears in the line: this is a paper model with no capital.
 
+Rebalance dates throughout are **decision** dates, not execution dates. The engine sets weights
+on the `W-FRI` grid at the Friday close; every sleeve applies `weight_panel.shift(1)` and the
+blend takes each day's return on the prior day's weights before snapping to target, so a set
+dated Friday first earns on the following trading session. The digest labels them
+"decided Fri …" and states that they are model weights, never executed trades.
+
 Overview also carries a **What changed** digest, windowed on the last rebalance rather than
 the last day — the model rebalances weekly, so a daily window would be empty most days. When
 that rebalance falls in the quietest decile the card says so and shows the last substantive
