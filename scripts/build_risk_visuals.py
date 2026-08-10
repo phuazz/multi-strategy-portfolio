@@ -164,16 +164,45 @@ def main():
     # class of defect as `uncovered_holdings` — a series that is PRESENT but
     # not current, rather than absent — so it is reported the same way:
     # loudly, and carried in the JSON so consumers can show the gap.
-    stale_holdings = []
+    #
+    # Staleness is measured against the panel's OWN newest held bar, never
+    # against `prices_asof`. `prices_asof` becomes live_track's latest session
+    # whenever live_dates is populated, and the live mark runs AHEAD of the
+    # price panel by construction: comparing every holding against it flags
+    # the whole book on a perfectly healthy panel, and a live date that
+    # trailed the panel would flag nothing on a broken one. live_dates was
+    # empty on 2026-08-10, which is the only reason comparing against the
+    # header date looked correct.
+    #
+    # Zero-weight lines and the gate's fallback cash leg are excluded on the
+    # same grounds as the coverage guard and `all_above_200dma`: they are not
+    # priced trend positions, and a de-risked book would otherwise read as a
+    # stale one.
+    held_bars = {}   # ticker -> last bar, held trend positions only
     for tk, w, v, s in rows:
+        if w <= 0 or tk == fallback:
+            continue
         k = price_key(tk, hp, meta)
         d = hp[k]["dates"][-1] if (k and hp[k].get("dates")) else None
-        if d and prices_asof and d < prices_asof:
-            stale_holdings.append({"ticker": tk, "weight_pct": round(w * 100, 1),
-                                   "last_bar": d, "sleeve": s})
+        if d:
+            held_bars[tk] = d
+    panel_asof = max(held_bars.values(), default=None)
+
+    stale_holdings = [
+        {"ticker": tk, "weight_pct": round(w * 100, 1),
+         "last_bar": held_bars[tk], "sleeve": s}
+        for tk, w, v, s in rows
+        if tk in held_bars and panel_asof and held_bars[tk] < panel_asof
+    ]
     stale_nav = round(sum(h["weight_pct"] for h in stale_holdings), 1)
+    # Share of NAV actually marked to `panel_asof`. Computed forwards rather
+    # than as 100 - stale_nav: a holding with no resolvable series at all is
+    # absent from held_bars, so it is never counted as current. That name is
+    # reported separately in `uncovered_holdings`.
+    current_nav = round(sum(w * 100 for tk, w, v, s in rows
+                            if held_bars.get(tk) == panel_asof), 1)
     if stale_holdings:
-        print(f"WARN: {len(stale_holdings)} holding(s) behind the {prices_asof} "
+        print(f"WARN: {len(stale_holdings)} holding(s) behind the {panel_asof} "
               f"panel date ({stale_nav}% of NAV): "
               + ", ".join(f"{h['ticker']} ({h['last_bar']})" for h in stale_holdings)
               + " — their 200-DMA proximity is computed on the stale bar")
@@ -181,8 +210,8 @@ def main():
     triggers = {
         "as_of_prices": prices_asof,
         "as_of_prices_oldest": min((h["last_bar"] for h in stale_holdings),
-                                   default=prices_asof),
-        "panel_current_pct_nav": round(100.0 - stale_nav, 1),
+                                   default=panel_asof),
+        "panel_current_pct_nav": current_nav,
         "stale_holdings": stale_holdings,
         "breadth_as_of": breadth_asof,
         "breadth": round(br, 4),
