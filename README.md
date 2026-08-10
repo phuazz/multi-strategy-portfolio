@@ -68,6 +68,17 @@ like-for-like; per-figure tooltips carry the basis and the as-at date. A US-equi
 is deliberately not used alone, as it would flatter or punish a global multi-asset rotation on
 asset mix. No currency figure appears in the line: this is a paper model with no capital.
 
+Overview also carries a **What changed** digest, windowed on the last rebalance rather than
+the last day — the model rebalances weekly, so a daily window would be empty most days. When
+that rebalance falls in the quietest decile the card says so and shows the last substantive
+one (at or above the median) beneath it, so it is never dead and never inflates a quiet week.
+Both cut-offs are percentiles recomputed from the full history at run time. Overlay switches
+are rare and material, so one firing at or after the previous rebalance is flagged rather than
+listed. Turnover counts every move while the rows count only moves ≥0.5pp (the blotter's
+threshold), so the row count is labelled with that threshold — the two measures differ and the
+Trades tab reports the unfiltered count for the same date. The digest and the Trades tab share
+`blotterAll()` / `latestRebalance()`, so they cannot drift apart on what "latest" means.
+
 **Overview** · **Allocation** · **Performance** · **Attribution** · **Risk & Regime** ·
 **Signals** · **Data Health** · **Methodology** — built so a performance analyst, a CIO,
 and a quant PM each find what they look for: benchmark-relative performance and capture;
