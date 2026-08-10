@@ -644,12 +644,44 @@ function renderPnlStrip(elId){
 /* ---- live intraday (mirrors Portfolio Command Centre: Yahoo chart API via CORS proxy) ---- */
 const PROXIES = [ u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`, u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` ];
 let _intraTimer=null;
+/* The prior close an intraday move is measured against.
+
+   Yahoo's meta on this endpoint frequently omits regularMarketPreviousClose,
+   and chartPreviousClose is the close before the WHOLE requested range — five
+   sessions back, not the prior session. Falling back to it reported a FIVE-DAY
+   return as intraday: on Mon 10 Aug 2026 SPY read +2.09% (773.81 against
+   757.67) when the session was +0.04% against Friday's 773.26, and the model
+   read +1.55% against a true +0.41%. The vs-SPY figure changed sign, so the
+   card claimed underperformance on a day the model was ahead.
+
+   So the prior close is derived from the daily bars in the same response. There
+   is deliberately NO fall back to chartPreviousClose: a symbol whose prior
+   close cannot be established returns null and drops out, and the card reports
+   the reduced coverage. A missing contribution is recoverable; a wrong basis
+   folded silently into a weighted total is not. */
+function _priorClose(res, m){
+  const ts=res.timestamp||[], q=((res.indicators||{}).quote||[{}])[0]||{}, cl=q.close||[];
+  const bars=[];
+  for(let i=0;i<cl.length;i++) if(cl[i]!=null&&ts[i]!=null) bars.push([ts[i],cl[i]]);
+  if(bars.length){
+    const utcDay=t=>new Date(t*1000).toISOString().slice(0,10);
+    const qd=isNum(m.regularMarketTime)?utcDay(m.regularMarketTime):null;
+    // During a session Yahoo appends a partial bar for the quote's own day; the
+    // prior close is the bar before it. Before the open there is no such bar,
+    // so the newest completed bar already IS the prior close.
+    const lastBarIsQuoteDay = qd && utcDay(bars[bars.length-1][0])===qd;
+    if(lastBarIsQuoteDay) return bars.length>=2 ? bars[bars.length-2][1] : null;
+    return bars[bars.length-1][1];
+  }
+  return isNum(m.regularMarketPreviousClose) ? m.regularMarketPreviousClose
+       : isNum(m.previousClose) ? m.previousClose : null;
+}
 async function _yfQuote(sym){
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&_cb=${Date.now()}`;
   for(const p of PROXIES){
     try{ const r=await fetch(p(url),{cache:'no-store'}); if(!r.ok) continue; const j=await r.json();
-      const m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta; if(!m) continue;
-      const price=m.regularMarketPrice, prev=(m.regularMarketPreviousClose!=null?m.regularMarketPreviousClose:(m.previousClose!=null?m.previousClose:m.chartPreviousClose));
+      const res=j&&j.chart&&j.chart.result&&j.chart.result[0]; const m=res&&res.meta; if(!m) continue;
+      const price=m.regularMarketPrice, prev=_priorClose(res,m);
       if(isNum(price)&&isNum(prev)&&prev) return {ret:price/prev-1, t:m.regularMarketTime};
     }catch(e){}
   }
