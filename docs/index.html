@@ -70,6 +70,27 @@ a{color:var(--b-text);text-decoration:none}
 .hs-risk .hs-sep{color:var(--t4);margin:0 6px}
 @media(max-width:560px){.headline-sent{font-size:15px;margin-bottom:16px}}
 
+/* what-changed digest */
+.wc-sect{font-size:11px;text-transform:uppercase;letter-spacing:0.8px;color:var(--t3-text);
+  font-weight:700;margin:14px 0 7px}
+.wc-sect:first-child{margin-top:0}
+/* Rows stay on ONE line at every width: the fund name is the only elastic part,
+   so it ellipsises (full text on the title attribute) rather than wrapping and
+   pushing the delta onto a third line — which took each row to 85px at 390px. */
+.wc-row{display:flex;align-items:baseline;gap:9px;padding:6px 0;font-size:13px;
+  border-bottom:1px solid var(--bd)}
+.wc-row:last-child{border-bottom:none}
+.wc-row .act{font-size:11px;flex:none}          /* 9.5px default is below the floor */
+.wc-row strong{flex:none}
+.wc-name{color:var(--t3-text);font-size:11.5px;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wc-w{font-family:var(--mono);font-size:11.5px;flex:none;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.wc-flag{background:var(--a-bg);border:1px solid rgba(180,83,9,0.3);color:var(--a-text);
+  padding:9px 13px;border-radius:6px;font-size:12.5px;line-height:1.5;margin-bottom:4px}
+.wc-quiet{color:var(--t2);font-size:12.5px;line-height:1.55}
+.wc-meta{text-transform:none;letter-spacing:0;font-weight:400;color:var(--t3-text)}
+
 /* KPI strip */
 .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--bd);
   border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px}
@@ -451,6 +472,94 @@ function sleeveChip(code){ const m=DS.weights.sleeve_meta[code]||{name:code}; co
 function tvSymbol(s){ if(!s) return ''; if(s.endsWith('.DE')) return 'XETR:'+s.slice(0,-3); if(s.endsWith('.SZ')) return 'SZSE:'+s.slice(0,-3); return s; }
 function windowBtns(cur, keys, fn){ return `<div class="fbtns">`+keys.map(k=>`<button class="fbtn ${cur===k?'active':''}" onclick="${fn}('${k}')">${k}</button>`).join('')+`</div>`; }
 
+/* "What changed" digest — the orienting card on Overview.
+
+   The Portfolio Command Centre runs a prior-DAY digest because it is a
+   live-traded book. This model rebalances weekly, so a daily digest would be
+   empty most days and would train the reader to ignore the card. The window
+   here is therefore the last rebalance, not the last day.
+
+   A weekly card still goes quiet: measured over the 404 rebalances since
+   inception, the median moves 11.5% turnover but 4.5% move less than 2%. So
+   when the latest rebalance falls in the quietest decile the card says so
+   plainly AND shows the last substantive rebalance (at or above the median)
+   beneath it. The card is never dead, and it never dresses a quiet week up as
+   an eventful one. Both cut-offs are percentiles recomputed from the history
+   at run time rather than hard-coded numbers, so they stay true as it grows.
+
+   No elapsed-time arithmetic appears here. Dates are printed absolutely and
+   compared as ISO-8601 strings, which order lexicographically — the vault rule
+   bars hand-rolled date maths and this template loads no date library. */
+function renderWhatChanged(){
+  const t=DS.trades||{}, rg=DS.regime||{};
+  const latest=latestRebalance();
+  if(!latest) return '';
+
+  // Percentiles over completed rebalances, excluding the inception deployment.
+  const tw=(t.weekly||[]).slice(1).map(e=>e.turnover).filter(isNum).sort((a,b)=>a-b);
+  const pctl=p=> tw.length ? tw[Math.floor(p*(tw.length-1))] : null;
+  const p10=pctl(0.10), med=pctl(0.50);
+  const quiet=isNum(latest.turnover)&&isNum(p10)&&latest.turnover<p10;
+
+  const sect=(title,meta)=>`<div class="wc-sect">${title}${meta?` <span class="wc-meta">${meta}</span>`:''}</div>`;
+  // Turnover counts every move; the rows below count only moves at or above the
+  // blotter's 0.5pp threshold. Those are different measures, so the count is
+  // labelled with its threshold — otherwise it reads as a contradiction against
+  // the Trades tab, which reports the unfiltered trade count for the same date.
+  const plural=n=>`${n} move${n===1?'':'s'} ≥0.5pp`;
+  const row=d=>`<div class="wc-row">${_actChip(d.action)} <strong>${esc(d.ticker)}</strong>`
+    +`<span class="wc-name" title="${esc(d.name||'')}">${esc(d.name||'')}</span>`
+    +`<span class="wc-w ${signClass(d.delta)}">${pctSigned(d.delta,1)}`
+    +` <span class="muted">(${pct(d.from,1)}→${pct(d.to,1)})</span></span></div>`;
+  const CAP=5;
+  const rows=list=>{
+    if(!list.length) return `<div class="wc-quiet">No position moved by more than 0.5pp, the blotter's reporting threshold.</div>`;
+    const rest=list.length-CAP;
+    return list.slice(0,CAP).map(row).join('')
+      +(rest>0?`<div class="wc-row"><span class="muted" style="font-size:12px">+${rest} more —`
+        +` <a href="#" onclick="setTab('trades');return false;">see the blotter</a></span></div>`:'');
+  };
+
+  const lDeltas=latest.deltas||[];
+  let body=sect(`Latest rebalance · ${fmtDate(latest.date)}`,
+                `${pct(latest.turnover,1)} turnover · ${plural(lDeltas.length)}`)
+         + rows(lDeltas);
+
+  if(quiet){
+    const wk=t.weekly||[];
+    let sub=null;
+    for(let i=wk.length-2;i>=1;i--){ if(isNum(wk[i].turnover)&&wk[i].turnover>=med){ sub=wk[i]; break; } }
+    body+=`<div class="wc-quiet" style="margin-top:9px">Among the quietest 10% of rebalances since inception`
+      +` (below ${pct(p10,1)} turnover; the median is ${pct(med,1)}).${sub?'':' No larger recent rebalance to show.'}</div>`;
+    if(sub){
+      const sd=blotterAll().filter(b=>b.date===sub.date);
+      body+=sect(`Last substantive rebalance · ${fmtDate(sub.date)}`,
+                 `${pct(sub.turnover,1)} turnover · ${plural(sd.length)}`) + rows(sd);
+    }
+  }
+
+  // A gate or tilt switch is rare and material, so one firing at or after the
+  // previous rebalance is flagged loudly rather than listed as another row.
+  const acts=t.actions||[];
+  const ds=(t.alloc_history||{}).dates||[];
+  const prevDate=ds.length>1?ds[ds.length-2]:null;
+  const fresh=prevDate?acts.filter(a=>a.date>=prevDate):[];
+  body+=sect('Overlay');
+  if(fresh.length){
+    body+=fresh.map(a=>`<div class="wc-flag">${_actionChip(a.action)} <strong>${fmtDate(a.date)}</strong> — ${esc(a.detail)}</div>`).join('');
+  }else{
+    const tilt=rg.eem_tilt||{};
+    body+=`<div class="wc-quiet">No gate or tilt switch at this rebalance. De-risk gate `
+      +`<strong>${rg.state==='RISK_ON'?'risk-on':'risk-off'}</strong> since ${fmtDate(rg.since)}`
+      +(tilt.enabled?`; EM tilt <strong>${tilt.active?'on':'off'}</strong> since ${fmtDate(tilt.since)}`:'')+`.</div>`;
+  }
+
+  return `<div class="card">
+    <div class="card-h"><div class="card-title">What changed</div>
+      <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
+    ${body}</div>`;
+}
+
 /* ============================ OVERVIEW ============================ */
 function renderOverview(){
   const s=DS.stats, rg=DS.regime, w=DS.weights;
@@ -458,6 +567,7 @@ function renderOverview(){
   const el=document.getElementById('tabContent');
   el.innerHTML = `
     <div class="pnl-strip" id="ovPnl"></div>
+    ${renderWhatChanged()}
     <div class="card">
       <div class="card-h">
         <div class="card-title">Model vs benchmarks — cumulative return (rebased to window)</div>
@@ -1179,18 +1289,11 @@ function trendBar(v){ if(!isNum(v)) return '<span class="muted">—</span>';
 function renderTrades(){
   const t=DS.trades||{}, ah=t.alloc_history; const el=document.getElementById('tabContent');
   const actChip=a=>`<span class="act act-${(a||'').toLowerCase()}">${a}</span>`;
-  let latest;
-  if(ah && ah.dates && ah.dates.length){             // full-history blotter, derived from the weekly matrix
-    _blotter=_buildBlotterFromMatrix();
-    const li=ah.dates.length-1;
-    let deltas=_blotter.filter(b=>b.date===ah.dates[li]);
-    if(!deltas.length && _blotter.length) deltas=_blotter.filter(b=>b.date===_blotter[0].date);
-    latest={date:(deltas[0]?deltas[0].date:ah.dates[li]), type: ah.dates.length===1?'initial':'rebalance',
-      turnover:(t.weekly&&t.weekly[li]?t.weekly[li].turnover:null), n:deltas.length, deltas};
-  } else {                                           // fallback: forward ledger
-    const log=t.log||[]; if(!log.length){ el.innerHTML='<div class="loading">No trade history available.</div>'; return; }
-    latest=log[0]; _blotter=[]; log.forEach(e=>(e.deltas||[]).forEach(d=>_blotter.push(Object.assign({date:e.date},d))));
-  }
+  // Both branches now share blotterAll()/latestRebalance() with the Overview
+  // digest, so the two surfaces cannot drift apart on what "latest" means.
+  _blotter=blotterAll();
+  const latest=latestRebalance();
+  if(!latest){ el.innerHTML='<div class="loading">No trade history available.</div>'; return; }
   _actions=t.actions||[];
   const days=(Date.now()-new Date(latest.date+'T00:00:00').getTime())/86400000;
   const latestTitle = latest.type==='initial' ? 'Opening position — '+fmtDate(latest.date)
@@ -1238,6 +1341,35 @@ function renderTrades(){
   if(_blotter.length){ const lo=_blotter[_blotter.length-1].date, hi=_blotter[0].date;
     ['blotFrom','blotTo'].forEach(id=>{ const e=document.getElementById(id); if(e){ e.min=lo; e.max=hi; e.value=(id==='blotFrom'?state.blotFrom:state.blotTo)||''; } }); }
   renderBlotter();
+}
+/* Shared rebalance reconstruction. _buildBlotterFromMatrix walks every weekly
+   rebalance × every ticker; the Overview digest and the Trades tab both need
+   the result and must never disagree about it, so it is built once and cached.
+   The cache is keyed to nothing because DS is loaded once per page load. */
+let _blotAll=null;
+function blotterAll(){
+  if(_blotAll) return _blotAll;
+  const t=DS.trades||{}, ah=t.alloc_history;
+  if(ah&&ah.dates&&ah.dates.length){ _blotAll=_buildBlotterFromMatrix(); }
+  else{ _blotAll=[]; (t.log||[]).forEach(e=>(e.deltas||[]).forEach(d=>_blotAll.push(Object.assign({date:e.date},d)))); }
+  return _blotAll;
+}
+/* The most recent rebalance, resolved identically for both consumers. Mirrors
+   the original Trades-tab logic, including its fallback when the weight matrix
+   carries a date but no delta above the blotter's 0.5pp reporting threshold. */
+function latestRebalance(){
+  const t=DS.trades||{}, ah=t.alloc_history, bl=blotterAll();
+  if(ah&&ah.dates&&ah.dates.length){
+    const li=ah.dates.length-1;
+    let deltas=bl.filter(b=>b.date===ah.dates[li]);
+    if(!deltas.length&&bl.length) deltas=bl.filter(b=>b.date===bl[0].date);
+    return {date:(deltas[0]?deltas[0].date:ah.dates[li]),
+            type: ah.dates.length===1?'initial':'rebalance',
+            turnover:(t.weekly&&t.weekly[li]?t.weekly[li].turnover:null),
+            n:deltas.length, deltas};
+  }
+  const log=t.log||[];
+  return log.length?log[0]:null;
 }
 function _buildBlotterFromMatrix(){
   const ah=DS.trades.alloc_history; if(!ah) return [];
