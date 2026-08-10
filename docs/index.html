@@ -61,6 +61,15 @@ a{color:var(--b-text);text-decoration:none}
 .pill-health-warn{background:var(--a-bg);color:var(--a-text);border-color:rgba(180,83,9,0.3)}
 .pill-health-stale{background:var(--r-bg);color:var(--r-text);border-color:rgba(192,57,43,0.3)}
 
+/* headline synthesis — the plain-language read between masthead and KPI strip */
+.headline-sent{margin:0 0 18px;font-size:16.5px;line-height:1.55;color:var(--t1);
+  letter-spacing:-0.1px;max-width:940px}
+.hs-num{font-weight:700;font-variant-numeric:tabular-nums}
+.hs-pos{color:var(--g-text)} .hs-neg{color:var(--r-text)}
+.hs-risk{margin-top:7px;font-size:12.5px;color:var(--t3-text);line-height:1.55}
+.hs-risk .hs-sep{color:var(--t4);margin:0 6px}
+@media(max-width:560px){.headline-sent{font-size:15px;margin-bottom:16px}}
+
 /* KPI strip */
 .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--bd);
   border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px}
@@ -156,6 +165,7 @@ a{color:var(--b-text);text-decoration:none}
     </div>
     <div class="mh-right" id="mhRight"></div>
   </div>
+  <div id="headlineSent" class="headline-sent" style="display:none"></div>
   <div class="kpi-strip" id="kpiStrip"></div>
   <div class="tab-bar" id="tabBar"></div>
   <div id="tabContent"></div>
@@ -217,7 +227,7 @@ async function bootstrap(){
   }
   state.benchmarks = Object.keys(DS.equity.benchmarks||{}).filter(k=>DS.equity.benchmarks[k].default);
   if(!state.benchmarks.length) state.benchmarks=['SPY'];
-  renderMasthead(); renderKPIs(); renderStaleBanner(); renderTabBar(); renderFooter(); renderTab();
+  renderMasthead(); renderHeadline(); renderKPIs(); renderStaleBanner(); renderTabBar(); renderFooter(); renderTab();
 }
 
 /* ============================ masthead / KPIs ============================ */
@@ -233,6 +243,69 @@ function renderMasthead(){
     `<span class="pill" title="Latest model NAV date">As of ${fmtDateShort(m.live_asOf||m.asOf)}</span>`,
     `<span class="pill pill-health-${hl}" title="Data-integrity status">${hl==='ok'?'✓ Data OK':hl==='warn'?'⚠ Check data':'✕ Stale'}</span>`,
   ].join('');
+}
+
+/* Plain-language synthesis line between the masthead and the KPI strip.
+   The KPI strip states eight facts; this states what they add up to.
+
+   Basis discipline. Every figure is a time-weighted return on the model curve.
+   The benchmark clauses difference two numbers produced by the SAME function
+   (metrics.period_returns) over the SAME window: model and benchmarks both
+   anchor YTD on the prior year-end close and both end on the latest dataset
+   date. That parity is what makes the "pp ahead" arithmetic legitimate — it is
+   the one thing to re-check if the series ever fall out of step. The model
+   carries no external flows (target weights, paper), so there is a single
+   basis and no money-weighted figure that could be silently mixed in.
+   The final model point is a live mark-to-market rather than a settled close;
+   the benchmarks carry the same date, so the comparison stays like-for-like. */
+function renderHeadline(){
+  const el=document.getElementById('headlineSent'); if(!el) return;
+  const s=DS.stats||{}, rg=DS.regime||{}, w=DS.weights||{};
+  const pr=s.period_returns||{}, bs=s.benchmark_stats||{};
+  const ytd=pr.YTD;
+  if(!isNum(ytd)) return;              // no YTD, nothing honest to summarise
+
+  const asOf=fmtDate(DS.meta.live_asOf||DS.meta.asOf);
+  const tip='Time-weighted return. Model and benchmark YTD come from the same function over '
+    +'the same window — both anchored on the prior year-end close, both ending '+asOf+'. '
+    +'The final model point is a live mark-to-market, not a settled close.';
+
+  let line=`Model <span class="hs-num ${ytd>=0?'hs-pos':'hs-neg'}" title="${esc(tip)}">`
+    +`${ytd>=0?'up':'down'} ${pct(Math.abs(ytd),2)}</span> year to date`;
+
+  // Both house comparators. The S&P 500 is the KPI strip's anchor; a global
+  // 60/40 is the closer like-for-like read for a global multi-asset rotation,
+  // which a single US-equity anchor would flatter or punish on asset mix alone.
+  const frags=[];
+  // `name` is HTML (entity-encoded); `plain` goes into title attributes, which
+  // esc() encodes once — passing the entity form there would double-escape it.
+  for(const [key,name,plain] of [['SPY','the S&amp;P 500','the S&P 500'],
+                                 ['AOR','global 60/40','global 60/40']]){
+    const b=((bs[key]||{}).period_returns||{}).YTD;
+    if(!isNum(b)) continue;
+    const alpha=ytd-b;
+    const bt=`${tip} Model ${pct(ytd,2)} vs ${plain} ${pct(b,2)}.`;
+    if(Math.abs(alpha)<0.0005){
+      frags.push(`<span title="${esc(bt)}">level with ${name}</span>`);
+    }else{
+      frags.push(`<span class="hs-num ${alpha>=0?'hs-pos':'hs-neg'}" title="${esc(bt)}">`
+        +`${(alpha>=0?'+':'')+(alpha*100).toFixed(2)} pp</span>`
+        +`<span title="${esc(bt)}"> ${alpha>=0?'ahead of':'behind'} ${name}</span>`);
+    }
+  }
+  if(frags.length) line+=', '+frags.join(' and ');
+
+  // Risk facts — computed state only, never an invented policy limit.
+  const bits=[`De-risk gate <strong>${rg.state==='RISK_ON'?'risk-on':'risk-off'}</strong> at ${pct(rg.breadth,0)} breadth`];
+  const t=rg.eem_tilt||{};
+  if(t.enabled) bits.push(`EM tilt ${t.active?'on':'off'}${t.since?' since '+fmtDate(t.since):''}`);
+  if(isNum(s.current_dd)) bits.push(Math.abs(s.current_dd)<0.0005?'at its high-water mark'
+    :`${pct(Math.abs(s.current_dd),1)} below the high-water mark`);
+  if(isNum(w.cash_pct)) bits.push(w.cash_pct<0.0005?'fully invested':`${pct(w.cash_pct,1)} in cash`);
+  bits.push('as at '+asOf);
+
+  el.style.display='';
+  el.innerHTML=`<div>${line}.</div><div class="hs-risk">${bits.join('<span class="hs-sep">·</span>')}</div>`;
 }
 
 function kpiCard(label,val,sub,cls){
