@@ -556,7 +556,7 @@ function renderWhatChanged(){
   };
 
   const lDeltas=latest.deltas||[];
-  let body=sect(`Latest rebalance · decided ${fmtDateDow(latest.date)}`,
+  let body=sect(`Latest rebalance · priced at ${fmtDateDow(latest.date)} close`,
                 `${pct(latest.turnover,1)} turnover · ${plural(lDeltas.length)}`)
          + rows(lDeltas);
 
@@ -568,7 +568,7 @@ function renderWhatChanged(){
       +` (below ${pct(p10,1)} turnover; the median is ${pct(med,1)}).${sub?'':' No larger recent rebalance to show.'}</div>`;
     if(sub){
       const sd=blotterAll().filter(b=>b.date===sub.date);
-      body+=sect(`Last substantive rebalance · decided ${fmtDateDow(sub.date)}`,
+      body+=sect(`Last substantive rebalance · priced at ${fmtDateDow(sub.date)} close`,
                  `${pct(sub.turnover,1)} turnover · ${plural(sd.length)}`) + rows(sd);
     }
   }
@@ -590,16 +590,27 @@ function renderWhatChanged(){
   }
 
   // The rows look like a blotter, so the card states plainly that they are not
-  // one. The weights are decided at the Friday close shown and first earn on
-  // the following session — every sleeve applies weight_panel.shift(1), and the
-  // blend takes each day's return on the prior day's weights before snapping to
-  // target. Labelling the Friday as the rebalance alone reads as "traded that
-  // day"; it is the decision date.
+  // one, and states the execution convention, which is easy to get wrong.
+  //
+  // Corrected 2026-08-11 after the owner asked whether fills are Monday. They
+  // are not. Every sleeve reads its signal at the session BEFORE the rebalance
+  // date (prev_idx = get_loc(rd) - 1, normally Thursday), stamps the weights on
+  // the Friday, then earns them via weight_panel.shift(1) against close-to-close
+  // returns. shift(1) on close-to-close means the new Friday weight earns the
+  // Friday-close-to-Monday-close bar, which is only true if the position was
+  // established AT Friday's close. So the implied fill is the Friday close, and
+  // the signal-to-fill gap is one full session (Thursday close -> Friday close),
+  // long enough to work a market-on-close order.
+  //
+  // The earlier wording here said "decided at the Friday close and first earns
+  // on the following session". Both halves misled: the signal is Thursday's, and
+  // "first earns on the following session" reads as a Monday fill when the entry
+  // price is Friday's close.
   return `<div class="card">
     <div class="card-h"><div class="card-title">What changed</div>
       <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
     ${body}
-    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. Each set is decided at the Friday close shown and first earns on the following trading session.</div></div>`;
+    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Thursday) and the model assumes the switch is <strong>priced at the Friday close shown</strong>, so the first return it earns is Friday close to Monday close. The gap between signal and fill is one full session, not a weekend.</div></div>`;
 }
 
 /* ============================ OVERVIEW ============================ */

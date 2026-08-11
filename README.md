@@ -68,11 +68,15 @@ like-for-like; per-figure tooltips carry the basis and the as-at date. A US-equi
 is deliberately not used alone, as it would flatter or punish a global multi-asset rotation on
 asset mix. No currency figure appears in the line: this is a paper model with no capital.
 
-Rebalance dates throughout are **decision** dates, not execution dates. The engine sets weights
-on the `W-FRI` grid at the Friday close; every sleeve applies `weight_panel.shift(1)` and the
-blend takes each day's return on the prior day's weights before snapping to target, so a set
-dated Friday first earns on the following trading session. The digest labels them
-"decided Fri …" and states that they are model weights, never executed trades.
+**Execution convention.** A rebalance dated Friday is assumed **filled at that Friday's close**,
+not on the Monday. Each sleeve reads its signal at the session *before* the rebalance date
+(`prev_idx = closes.index.get_loc(rd) - 1`, normally Thursday), stamps the target weights on the
+Friday, and earns them through `weight_panel.shift(1)` against close-to-close returns. Because
+`shift(1)` on close-to-close returns makes the new Friday weight earn the Friday-close to
+Monday-close bar, the position must already exist at Friday's close — hence a Friday fill. The
+signal-to-fill gap is therefore one full session (Thursday close to Friday close), long enough to
+work a market-on-close order, and is not a weekend. The digest labels the rows
+"priced at Fri … close" and states that they are model weights, never executed trades.
 
 Overview also carries a **What changed** digest, windowed on the last rebalance rather than
 the last day — the model rebalances weekly, so a daily window would be empty most days. When
