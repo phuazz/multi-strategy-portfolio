@@ -5,3 +5,10 @@ yfinance>=0.2
 python-dateutil>=2.8
 requests>=2.28
 pandas_market_calendars>=4.4   # true NYSE calendar for capture check + sentinel
+# Not used by pipeline.py. scripts/build_risk_visuals.py imports it lazily to
+# draw the risk gauges, and tests/test_risk_triggers_staleness.py exercises that
+# function end to end -- so CI needs it even though the daily build does not.
+# Declared rather than skipped: those tests guard the holding-staleness
+# behaviour fixed in eb432a1, and skipping them in CI would drop exactly the
+# coverage that commit added.
+matplotlib>=3.7
