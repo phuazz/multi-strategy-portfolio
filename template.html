@@ -336,8 +336,23 @@ function renderHeadline(){
   el.innerHTML=`<div>${line}.</div><div class="hs-risk">${bits.join('<span class="hs-sep">·</span>')}</div>`;
 }
 
-function kpiCard(label,val,sub,cls){
-  return `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-val ${cls||''}">${val}</div><div class="kpi-sub">${sub||''}</div></div>`;
+function kpiCard(label,val,sub,cls,title){
+  return `<div class="kpi"${title?` title="${esc(title)}"`:''}><div class="kpi-label">${label}</div><div class="kpi-val ${cls||''}">${val}</div><div class="kpi-sub">${sub||''}</div></div>`;
+}
+/* Standard error of an annualised Sharpe, Lo (2002) under the iid assumption:
+   SE ~ sqrt((1 + SR^2/2) / years). Computed rather than hard-coded so it tracks
+   the sample as it grows -- the engine quotes a fixed "~±0.4" from an earlier
+   vintage, and this returns ~0.45 on 7.6 years at SR ~ 1.0.
+
+   It is quoted because the risk-free convention moves this Sharpe by ~0.22
+   (raw 1.23 against excess 1.00) and the estimation error is roughly twice
+   that. Without the error bar, a reader comparing the two figures across pages
+   is arguing inside the noise without being told so. iid is optimistic for a
+   trend-following book with autocorrelated returns, so treat it as a floor. */
+function sharpeSE(sr, nDays){
+  if(!isNum(sr)||!isNum(nDays)||nDays<=0) return null;
+  const years = nDays/252;
+  return years>0 ? Math.sqrt((1 + sr*sr/2)/years) : null;
 }
 function renderKPIs(){
   const s=DS.stats, rg=DS.regime;
@@ -350,7 +365,20 @@ function renderKPIs(){
     kpiCard('1 Year', pctSigned(pr['1Y']), 'trailing', signClass(pr['1Y'])),
     kpiCard('CAGR', pct(s.cagr), 'since inception'),
     kpiCard('Ann. Vol', pct(s.ann_vol), 'daily, ×√252'),
-    kpiCard('Sharpe', num(isNum(s.sharpe_excess)?s.sharpe_excess:s.sharpe,2), isNum(s.sharpe_excess)?'excess vs T-bills':'rf = 0'),
+    (()=>{                      // Sharpe: state the convention, the alternative and the error bar
+      const useExcess=isNum(s.sharpe_excess), shown=useExcess?s.sharpe_excess:s.sharpe;
+      const se=sharpeSE(shown, s.n_days);
+      const sub=(useExcess?'excess vs T-bills':'rf = 0')+(isNum(se)?` · ±${num(se,2)}`:'');
+      const tip=`Sharpe is defined as excess return over the risk-free rate, so this is the `
+        +`excess figure: ${num(s.sharpe_excess,2)}, using cash at ${pct(s.cash_cagr,1)} pa. `
+        +`Without a risk-free deduction the same series gives ${num(s.sharpe,2)}, which is what `
+        +`the upstream engine page reports — a return-to-volatility ratio rather than a Sharpe. `
+        +(isNum(se)?`Either way the point estimate carries a standard error of about ${num(se,2)} `
+        +`on ${num(s.n_days/252,1)} years (Lo 2002, iid), so the ~${num(Math.abs(s.sharpe-s.sharpe_excess),2)} `
+        +`gap between the two conventions is well inside the estimation noise. iid understates the `
+        +`error for autocorrelated returns, so read it as a floor.`:'');
+      return kpiCard('Sharpe', num(shown,2), sub, '', tip);
+    })(),
     kpiCard('Max DD', pct(s.max_dd), 'now '+pct(s.current_dd), 'neg'),
     kpiCard('Breadth', pct(rg.breadth,0), rg.state==='RISK_ON'?'risk-on':'risk-off', rg.state==='RISK_ON'?'pos':'neg'),
   ].join('');
