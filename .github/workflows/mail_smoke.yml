@@ -1,0 +1,58 @@
+name: Ops mail smoke test
+
+# Manual-dispatch-only self-test of the alerting mail path.
+#
+# Ported from breadth-thrust-etf (added there 2026-07-18) on 2026-08-11,
+# after this repository demonstrated exactly the failure the engine's copy
+# was written to prevent.
+#
+# Why this exists: every alert here -- the daily-monitor failure alert, the
+# capture warning, [SENTINEL] -- goes through dawidd6/action-send-mail. A
+# broken mailer therefore fails SILENTLY, because the failure-alert step
+# that would report it uses the same action.
+#
+# That is not hypothetical in this repository. GMAIL_USER and
+# GMAIL_APP_PASSWORD were never set here at all, so the alert path had never
+# worked. When the scheduled build broke on 2026-08-11 (an undeclared
+# matplotlib dependency), the failure-alert step errored with "At least one
+# of 'to', 'cc' or 'bcc' must be specified" -- an empty GMAIL_USER -- and no
+# one was told. The dashboard sat frozen on pre-restatement figures,
+# overstating by about 4% of terminal value, with Data Health reading "ok"
+# throughout, because health describes the data on the page and says nothing
+# about whether the build that would replace it ran.
+#
+# Run this after any app-password rotation or mailer version bump, instead
+# of waiting for the next real alert to discover the channel is dark.
+#
+# Sends ONE email to the operator (GMAIL_USER) only. There is no cron:
+# dispatch it from the Actions tab.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send test email to operator
+        uses: dawidd6/action-send-mail@v18
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: '[SMOKE] Multi-Strategy monitor alert mail path OK'
+          to: ${{ secrets.GMAIL_USER }}
+          from: 'Multi-Strategy Monitor Ops <${{ secrets.GMAIL_USER }}>'
+          body: |
+            Manual smoke test of the ops alerting mail path for the
+            Multi-Strategy Portfolio monitor. If you are reading this, SMTP
+            auth and send both work on the currently pinned mailer action
+            version, and the daily-monitor failure alert can reach you.
+
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
