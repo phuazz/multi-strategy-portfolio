@@ -24,8 +24,12 @@ the upstream [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) 
 | Overlay — De-risk gate | — | Below 20% S&P 500 breadth, shift 50% of NAV to SHY; re-engage above 50% |
 | Overlay — EM tilt | +10% | EEM/SPY golden cross tilts 10% NAV to EEM, funded from sleeve B (weak evidence) |
 
-Deployed backtest (engine figures): Sharpe ≈ 1.28, CAGR ≈ 15.4%, max drawdown ≈ −16.3%,
-since 8 Nov 2018. The de-risk gate roughly halves drawdown versus the ungated blend.
+Headline statistics live on the dashboard's KPI strip — recomputed on every build and
+reconciled against the engine's published figures, with the Sharpe convention and error
+bar named on the tile. This file deliberately does not restate them: three engine
+restatements in one week of August 2026 (WS10 holiday cadence, WS11 survivorship, WS16
+cross-panel closure) each left a hardcoded copy stale on arrival. Backtest window since
+8 Nov 2018; the de-risk gate roughly halves max drawdown versus the ungated blend.
 
 ## Architecture
 
