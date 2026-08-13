@@ -95,7 +95,7 @@ a{color:var(--b-text);text-decoration:none}
 .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--bd);
   border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px}
 .kpi{background:var(--bg2);padding:14px 16px;min-width:0}
-.kpi-label{font-size:10px;color:var(--t3-text);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px}
+.kpi-label{font-size:11px;color:var(--t3-text);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px}
 .kpi-val{font-size:21px;font-weight:700;letter-spacing:-0.5px;font-variant-numeric:tabular-nums;line-height:1.1}
 .kpi-sub{font-size:11px;color:var(--t3-text);margin-top:3px}
 
@@ -136,7 +136,7 @@ a{color:var(--b-text);text-decoration:none}
 
 /* tables */
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
-.tbl thead th{padding:9px 10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;
+.tbl thead th{padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.6px;
   color:var(--t3-text);font-weight:700;border-bottom:2px solid var(--bd);background:var(--bg3);white-space:nowrap}
 .tbl tbody tr{border-bottom:1px solid var(--bd)}
 .tbl tbody tr:hover{background:var(--bg-hover)}
@@ -147,7 +147,7 @@ a{color:var(--b-text);text-decoration:none}
 
 /* misc chips */
 .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
-.sl-chip{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;color:#fff}
+.sl-chip{display:inline-block;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#fff}
 .bar-track{background:var(--bg4);border-radius:4px;height:8px;overflow:hidden;min-width:48px}
 .bar-fill{height:100%;border-radius:4px}
 .chart{width:100%}
@@ -161,18 +161,24 @@ a{color:var(--b-text);text-decoration:none}
 .filter-input:focus{outline:none;border-color:var(--t2)}
 .row-exp{cursor:pointer}
 .row-exp:hover{background:var(--bg-hover)}
-.exp-ind{display:inline-block;width:12px;color:var(--t3-text);font-size:9px}
+.exp-ind{display:inline-block;width:12px;color:var(--t3-text);font-size:11px}
 .exp-cell{background:var(--bg3);padding:0 !important}
 .exp-panel{padding:16px 18px}
 .chip{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;margin:0 6px 8px 0;background:var(--bg2);border:1px solid var(--bd);font-variant-numeric:tabular-nums}
 .chip-bull{background:var(--g-bg);color:var(--g-text);border-color:rgba(26,135,84,0.3)}
 .chip-bear{background:var(--r-bg);color:var(--r-text);border-color:rgba(192,57,43,0.3)}
-.act{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:0.3px;color:#fff;min-width:36px;text-align:center}
+.act{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.3px;color:#fff;min-width:36px;text-align:center}
 .act-new{background:#1a8754} .act-add{background:#22a366} .act-trim{background:#b45309} .act-exit{background:#c0392b} .act-initial{background:#8a8a82}
 .act-derisk{background:#c0392b} .act-reengage{background:#1a8754} .act-tilton{background:#0891b2} .act-tiltoff{background:#8a8a82}
 
 @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+/* A grid child floors at min-content unless told otherwise, so a wide
+   table inside a .card forced the whole column past the viewport and
+   scrolled the body (2026-08-13: attribution/health/signals tabs at
+   390px). This lets the card shrink so its own overflow-x wrapper can
+   do the scrolling. */
+.grid2>*,.grid3>*{min-width:0}
 @media(max-width:560px){.kpi-strip{grid-template-columns:repeat(2,1fr)}body{padding:0 12px 50px}.mh-left h1{font-size:27px}}
 </style>
 </head>
@@ -234,8 +240,8 @@ function baseLayout(extra){
   return Object.assign({
     margin:{t:12,b:38,l:54,r:18}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
     font:PLOT_FONT, hovermode:'x unified', showlegend:false,
-    xaxis:{gridcolor:'#ededea',tickfont:{size:10},zeroline:false},
-    yaxis:{gridcolor:'#ededea',tickfont:{size:10,family:'JetBrains Mono'},zeroline:false},
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false},
+    yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:false},
   }, extra||{});
 }
 const PLOT_CFG = {displayModeBar:false, responsive:true};
@@ -447,8 +453,8 @@ function buildEquityChart(elId, opt){
     });
   }
   const layoutExtra={ showlegend:true, legend:{orientation:'h',x:0,y:1.09,font:{size:11}},
-    xaxis:{gridcolor:'#ededea',tickfont:{size:10},zeroline:false,range:[startDate,endDate]},
-    yaxis:{gridcolor:'#ededea',tickfont:{size:10,family:'JetBrains Mono'},ticksuffix:log?'×':'%',zeroline:!log,zerolinecolor:'#cfcdc4'} };
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false,range:[startDate,endDate]},
+    yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},ticksuffix:log?'×':'%',zeroline:!log,zerolinecolor:'#cfcdc4'} };
   if(log) layoutExtra.yaxis.type='log';
   if(opt.showDrawdown){
     const dd=ddFrom(model,i0).map(v=> v===null?null:v*100);
@@ -457,7 +463,7 @@ function buildEquityChart(elId, opt){
       line:{color:'rgba(192,57,43,0.5)',width:0.8},fill:'tozeroy',fillcolor:'rgba(192,57,43,0.13)',hovertemplate:'DD %{y:.1f}%<extra></extra>'});
     layoutExtra.yaxis.domain=[0.27,1];              // returns in the top ~73%
     layoutExtra.yaxis2={domain:[0,0.20],anchor:'x',side:'left',range:[-ddabs*1.08,0.0001],
-      ticksuffix:'%',tickfont:{size:8,color:'rgba(192,57,43,0.85)',family:'JetBrains Mono'},
+      ticksuffix:'%',tickfont:{size:11,color:'rgba(192,57,43,0.85)',family:'JetBrains Mono'},
       gridcolor:'#f2efea',zeroline:false,nticks:3};  // drawdown ribbon in the bottom ~20%
   }
   const shapes=[];
@@ -469,7 +475,7 @@ function buildEquityChart(elId, opt){
   const anns=[]; const oos=DS.meta.oos_start;
   if(oos && oos>=startDate && oos<=endDate){
     shapes.push({type:'line',xref:'x',yref:'paper',x0:oos,x1:oos,y0:0,y1:1,line:{color:'#1a1a18',width:1.2,dash:'dot'}});
-    anns.push({x:oos,xref:'x',y:1.02,yref:'paper',text:'Out-of-sample →',showarrow:false,font:{size:9,color:'#5c5c56'},xanchor:'left'});
+    anns.push({x:oos,xref:'x',y:1.02,yref:'paper',text:'Out-of-sample →',showarrow:false,font:{size:11,color:'#5c5c56'},xanchor:'left'});
   }
   if(opt.showRegime && DS.trades && DS.trades.weekly){   // tie MAJOR rebalances (>8% turnover) to performance
     DS.trades.weekly.forEach(e=>{ const tn=e.turnover||0; if(tn>0.08 && tn<0.9 && e.date>=startDate && e.date<=endDate)
@@ -768,8 +774,8 @@ function renderMovers(elId, hz){
     <td class="r num">${pct(r.weight,1)}</td><td class="r num ${signClass(r[hz].ret)}">${pctSigned(r[hz].ret)}</td>
     <td class="r num ${signClass(r[hz].contrib)}">${pctSigned(r[hz].contrib,2)}</td></tr>`;
   document.getElementById(elId).innerHTML = `<div class="grid2" style="gap:24px">
-    <div><div class="section-label">Top contributors</div><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${top.map(mk).join('')}</tbody></table></div>
-    <div><div class="section-label">Detractors</div><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${bot.map(mk).join('')}</tbody></table></div>
+    <div><div class="section-label">Top contributors</div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${top.map(mk).join('')}</tbody></table></div></div>
+    <div><div class="section-label">Detractors</div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${bot.map(mk).join('')}</tbody></table></div></div>
   </div>`;
 }
 
@@ -855,9 +861,9 @@ function buildAllocHistory(){
   const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>(v||0)*100),
     stackgroup:'one',line:{width:0.4,color:typeof s.color==='string'&&s.color.startsWith('rgba')?s.color:s.color},fillcolor:s.color,
     hovertemplate:'%{x|%-d %b %y}<br>'+esc(s.name)+' %{y:.1f}%<extra></extra>'}));
-  plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:9}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
-    yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},range:[0,100]},
-    xaxis:{gridcolor:'#ededea',tickfont:{size:9},range:[xd[0],xd[xd.length-1]]}}));
+  plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:11}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
+    yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},range:[0,100]},
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},range:[xd[0],xd[xd.length-1]]}}));
   if(el.removeAllListeners) el.removeAllListeners('plotly_click');
   if(el.on) el.on('plotly_click', ev=>{ if(ev&&ev.points&&ev.points.length) showAllocAt(String(ev.points[0].x).slice(0,10)); });
 }
@@ -896,7 +902,7 @@ function renderAllocTable(){
   const body = rows.map(r=>{ const can=!!hp[r.ticker];
     return `<tr class="${can?'row-exp':''}" id="arow-${esc(r.ticker)}" ${can?`onclick="toggleHolding('${esc(r.ticker)}')"`:''}>
     <td><span class="exp-ind" id="ind-${esc(r.ticker)}">${can?'▸':''}</span>${sleeveChip(r.sleeve)} <strong>${esc(r.ticker)}</strong></td>
-    <td><span style="font-size:12.5px">${esc(r.name)}</span><br><span class="muted" style="font-size:10.5px">${esc(r.theme)} · ${esc(r.geo)}</span></td>
+    <td><span style="font-size:12.5px">${esc(r.name)}</span><br><span class="muted" style="font-size:11px">${esc(r.theme)} · ${esc(r.geo)}</span></td>
     <td class="c"><span class="muted num">${esc(r.tradeAs)}</span></td>
     <td class="num" style="font-size:11px;color:var(--t2)">${buildStr(r)}</td>
     <td class="r"><strong class="num">${pct(r.weight,1)}</strong></td>
@@ -943,8 +949,8 @@ function buildHoldingChart(t){
     {type:'scatter',mode:'lines',name:'50-MA',x:h.dates,y:h.ma50,line:{color:'#b45309',width:1.3},hovertemplate:'50-MA %{y}<extra></extra>'},
     {type:'scatter',mode:'lines',name:'200-MA',x:h.dates,y:h.ma200,line:{color:'#be185d',width:1.3,dash:'dot'},hovertemplate:'200-MA %{y}<extra></extra>'},
   ];
-  plot(document.getElementById('hchart-'+t),traces,baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.14,font:{size:10}},
-    margin:{t:8,b:28,l:48,r:12},yaxis:{gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:false}}));
+  plot(document.getElementById('hchart-'+t),traces,baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.14,font:{size:11}},
+    margin:{t:8,b:28,l:48,r:12},yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:false}}));
 }
 
 /* ============================ client-side stats (model + benchmarks) ============================ */
@@ -1026,7 +1032,7 @@ function renderPerformance(){
     ${(s.yearly&&s.yearly.length)?`<div class="card">
       <div class="card-title" style="margin-bottom:12px">Calendar-year returns vs S&amp;P 500</div>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Year</th><th class="r">Model</th><th class="r">S&amp;P 500</th><th class="r">Excess</th></tr></thead><tbody>
-        ${s.yearly.slice().reverse().map(y=>`<tr><td><strong>${y.year}</strong>${y.partial?' <span class="muted" style="font-size:10px">partial</span>':''}</td>
+        ${s.yearly.slice().reverse().map(y=>`<tr><td><strong>${y.year}</strong>${y.partial?' <span class="muted" style="font-size:11px">partial</span>':''}</td>
           <td class="r num ${signClass(y.model)}">${pctSigned(y.model)}</td>
           <td class="r num ${signClass(y.spy)}">${pctSigned(y.spy)}</td>
           <td class="r num ${signClass(y.excess)}" style="font-weight:600">${pctSigned(y.excess)}</td></tr>`).join('')}
@@ -1071,14 +1077,14 @@ function buildRolling(){
       line:{width:0},fill:'tozeroy',fillcolor:'rgba(37,99,235,0.13)',hovertemplate:'rel %{y:.0f}%<extra></extra>'},
     {type:'scatter',mode:'lines',name:'Model 12m',x:mr.x,y:mr.ret.map(v=>v*100),line:{color:'#1a8754',width:1.6},hovertemplate:'%{x|%b %Y}<br>model %{y:.0f}%<extra></extra>'},
     {type:'scatter',mode:'lines',name:'S&P 12m',x:sr.x,y:sr.ret.map(v=>v==null?null:v*100),line:{color:'#8a8a82',width:1.4},hovertemplate:'S&P %{y:.0f}%<extra></extra>'},
-  ], baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:9}},
-    yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},
-    yaxis2:{overlaying:'y',side:'right',ticksuffix:'%',tickfont:{size:8,color:'#2563eb',family:'JetBrains Mono'},gridcolor:'rgba(0,0,0,0)',zeroline:false}}));
+  ], baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:11}},
+    yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},
+    yaxis2:{overlaying:'y',side:'right',ticksuffix:'%',tickfont:{size:11,color:'#2563eb',family:'JetBrains Mono'},gridcolor:'rgba(0,0,0,0)',zeroline:false}}));
 }
 function buildUnderwater(){
   const eq=DS.equity; let peak=-Infinity; const dd=eq.model.map(v=>{ peak=Math.max(peak,v); return (v/peak-1)*100; });
   plot(document.getElementById('perfDD'),[{type:'scatter',mode:'lines',x:eq.dates,y:dd,line:{color:'rgba(192,57,43,0.6)',width:1},fill:'tozeroy',fillcolor:'rgba(192,57,43,0.12)',hovertemplate:'%{x|%b %Y}<br>DD %{y:.1f}%<extra></extra>'}],
-    baseLayout({yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:9,family:'JetBrains Mono'},rangemode:'tozero'}}));
+    baseLayout({yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:11,family:'JetBrains Mono'},rangemode:'tozero'}}));
 }
 function buildPerfStats(){
   const eq=DS.equity;
@@ -1121,7 +1127,7 @@ function buildHeatmap(){
   const cell=v=>{ if(!isNum(v)) return '<td style="background:var(--bg3)"></td>';
     const a=Math.min(0.82, Math.abs(v)/maxAbs*0.8+0.06); const col=v>=0?`rgba(26,135,84,${a})`:`rgba(192,57,43,${a})`;
     return `<td class="num" style="background:${col};text-align:right;font-size:11px;padding:6px 8px;color:${Math.abs(v)/maxAbs>0.5?'#fff':'var(--t1)'}">${(v*100).toFixed(1)}</td>`; };
-  const head=`<tr><th>Year</th>${MO.map(m=>`<th class="r" style="font-size:10px">${m}</th>`).join('')}<th class="r">Year</th></tr>`;
+  const head=`<tr><th>Year</th>${MO.map(m=>`<th class="r" style="font-size:11px">${m}</th>`).join('')}<th class="r">Year</th></tr>`;
   const body=years.map(y=>`<tr><td><strong>${y}</strong></td>${MO.map((_,i)=>cell(mm[y][i+1])).join('')}
     <td class="num ${signClass(mm[y].YEAR)}" style="text-align:right;font-weight:700">${pctSigned(mm[y].YEAR)}</td></tr>`).join('');
   document.getElementById('perfHeatmap').innerHTML=`<table class="tbl" style="font-size:11px"><thead>${head}</thead><tbody>${body}</tbody></table>`;
@@ -1180,7 +1186,7 @@ function buildAttrChart(){
     x:rows.map(r=>r.contrib*100).reverse(), y:rows.map(r=>r.label).reverse(),
     marker:{color:rows.map(r=>r.color).reverse()},
     hovertemplate:'%{y}<br>contrib %{x:.2f}%<extra></extra>'}],
-    baseLayout({margin:{t:8,b:30,l:96,r:14},xaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},yaxis:{tickfont:{size:11},automargin:true},hovermode:'closest'}));
+    baseLayout({margin:{t:8,b:30,l:96,r:14},xaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},yaxis:{tickfont:{size:11},automargin:true},hovermode:'closest'}));
 }
 function volOf(arr){ const r=arrReturns((arr||[]).slice(-253).filter(isNum)); if(r.length<2) return null;
   const m=mean(r); return Math.sqrt(mean(r.map(x=>(x-m)**2)))*Math.sqrt(252); }
@@ -1210,13 +1216,13 @@ function buildRiskScatter(){
   if(!nodes.length){ el.innerHTML='<div class="muted" style="padding:50px;text-align:center">No risk/return data for this view.</div>'; return; }
   const hz=state.attrHorizon; const yLabel=((state.attrView!=='sleeve')&&hz==='SI')?'1-year return':hz+' return';
   plot(el,[{type:'scatter',mode:'markers+text',x:nodes.map(n=>n.x*100),y:nodes.map(n=>n.y*100),
-    text:nodes.map(n=>n.label),textposition:'top center',textfont:{size:8,color:'#5c5c56'},
+    text:nodes.map(n=>n.label),textposition:'top center',textfont:{size:11,color:'#5c5c56'},
     marker:{size:nodes.map(n=>Math.max(9,Math.sqrt(Math.abs(n.size||0))*95)),color:nodes.map(n=>n.color),opacity:0.72,line:{color:'#fff',width:1}},
     customdata:nodes.map(n=>(n.size||0)*100),
     hovertemplate:'<b>%{text}</b><br>vol %{x:.0f}% · ret %{y:.1f}%<br>weight %{customdata:.1f}%<extra></extra>'}],
     baseLayout({showlegend:false,hovermode:'closest',
-      xaxis:{title:{text:'Annualised volatility',font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:false},
-      yaxis:{title:{text:yLabel,font:{size:10}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'}}));
+      xaxis:{title:{text:'Annualised volatility',font:{size:11}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:false},
+      yaxis:{title:{text:yLabel,font:{size:11}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'}}));
 }
 function buildAttrTable(){
   const hz=state.attrHorizon, v=state.attrView; const rows=attrRows().sort((a,b)=>b.contrib-a.contrib);
@@ -1224,7 +1230,7 @@ function buildAttrTable(){
   let head, body, span;
   if(v==='etf'){
     head=`<thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Risk%</th><th class="r">Vol</th><th class="r">Ret ${hz}</th><th class="r">Contrib</th></tr></thead>`;
-    body=rows.map(r=>`<tr><td>${sleeveChip(r.sleeve)} <strong>${esc(r.label)}</strong><br><span class="muted" style="font-size:10.5px">${esc(r.name)}</span></td>
+    body=rows.map(r=>`<tr><td>${sleeveChip(r.sleeve)} <strong>${esc(r.label)}</strong><br><span class="muted" style="font-size:11px">${esc(r.name)}</span></td>
       <td class="r num">${pct(r.weight,1)}</td><td class="r num">${pct(r.risk_pct,1)}</td><td class="r num">${pct(r.vol,0)}</td>
       <td class="r num ${signClass(r.ret)}">${pctSigned(r.ret)}</td><td class="r num ${signClass(r.contrib)}">${pctSigned(r.contrib,2)}</td></tr>`).join(''); span=4;
   } else {
@@ -1253,7 +1259,7 @@ function renderRisk(){
         <div style="position:relative;height:26px;border-radius:6px;overflow:hidden;background:linear-gradient(90deg,#c0392b 0%,#c0392b ${offT}%,#b45309 ${offT}%,#b45309 ${onT}%,#1a8754 ${onT}%,#1a8754 100%);opacity:0.85">
           <div style="position:absolute;top:-3px;bottom:-3px;left:${br}%;width:3px;background:#1a1a18;box-shadow:0 0 0 2px #fff"></div>
         </div>
-        <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3-text);margin-top:4px"><span>0</span><span>off ${offT}%</span><span>on ${onT}%</span><span>100</span></div>
+        <div class="mono" style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3-text);margin-top:4px"><span>0</span><span>off ${offT}%</span><span>on ${onT}%</span><span>100</span></div>
         <div class="callout" style="margin-top:14px;font-size:12px">Below ${offT.toFixed(0)}% breadth → shift ${(rg.derisk_fraction*100).toFixed(0)}% of NAV to ${rg.fallback_ticker}. Re-engage above ${onT.toFixed(0)}%.</div>
       </div>
       <div class="card">
@@ -1294,7 +1300,7 @@ function renderRisk(){
     </div>
     <div class="grid2">
       <div class="card"><div class="card-title" style="margin-bottom:10px">EM tilt — ratio vs moving averages</div><div id="riskEem" class="chart" style="height:280px"></div></div>
-      <div class="card"><div class="card-title" style="margin-bottom:10px">Sleeve correlation (daily returns, since inception)</div><div id="riskCorr"></div></div>
+      <div class="card"><div class="card-title" style="margin-bottom:10px">Sleeve correlation (daily returns, since inception)</div><div id="riskCorr" style="overflow-x:auto"></div></div>
     </div>`;
   document.getElementById('riskWinBtns').innerHTML=windowBtns(state.riskWindow,WIN_RISK,'setRiskWin');
   buildEquityChart('riskEquity',{window:state.riskWindow,showBenchmarks:false,showDrawdown:false,showRegime:true,showLive:false});
@@ -1309,7 +1315,7 @@ function renderRisk(){
       {type:'scatter',mode:'lines',name:'EEM/SPY',x:s.dates,y:s.ratio,line:{color:'#8a8a82',width:1}},
       {type:'scatter',mode:'lines',name:'50d MA',x:s.dates,y:s.fast_ma,line:{color:'#0891b2',width:1.6}},
       {type:'scatter',mode:'lines',name:'200d MA',x:s.dates,y:s.slow_ma,line:{color:'#b45309',width:1.6}},
-    ], baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:10}},yaxis:{gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'}}}));
+    ], baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:11}},yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'}}}));
   } else { document.getElementById('riskEem').innerHTML='<div class="muted" style="padding:40px;text-align:center">No tilt series available.</div>'; }
   buildCorrMatrix('riskCorr');
 }
@@ -1337,14 +1343,14 @@ function renderSignals(){
       <div class="card">
         <div class="card-h"><div class="card-title">${sleeveChip(c)} ${esc((sm[c]||{}).name||c)}</div><div class="card-note">${pct((sm[c]||{}).alloc,0)} of NAV</div></div>
         <div class="muted" style="font-size:12px;margin-bottom:12px">${esc((sm[c]||{}).desc||'')}</div>
-        <table class="tbl"><thead><tr><th>Holding</th><th class="r">Weight</th><th class="r">vs 200d</th><th class="r">1d</th><th class="c">Trend (1Y)</th></tr></thead><tbody>
+        <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th class="r">Weight</th><th class="r">vs 200d</th><th class="r">1d</th><th class="c">Trend (1Y)</th></tr></thead><tbody>
         ${sig[c].map(h=>`<tr>
-          <td><strong>${esc(h.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(h.name)}</span><br><span class="muted" style="font-size:10px">${esc(h.theme)}</span></td>
+          <td><strong>${esc(h.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(h.name)}</span><br><span class="muted" style="font-size:11px">${esc(h.theme)}</span></td>
           <td class="r num">${pct(h.weight,1)}</td>
           <td class="r">${trendBar(h.vs_ma200)}</td>
           <td class="r num ${signClass(h.change_pct)}">${isNum(h.change_pct)?pctSigned(h.change_pct):'—'}</td>
           <td class="c">${sparkSVG(h.ticker)}</td></tr>`).join('')}
-        </tbody></table>
+        </tbody></table></div>
       </div>`).join('')}</div>`;
 }
 function sparkSVG(ticker){
@@ -1419,7 +1425,7 @@ function renderTrades(){
   const wk=(t.weekly&&t.weekly.length)?t.weekly:log.slice().reverse();   // full weekly series since inception
   plot(document.getElementById('trTurnover'),[{type:'bar',x:wk.map(e=>e.date),y:wk.map(e=>(e.turnover||0)*100),
     marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
-    baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:9,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:9}}}));
+    baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:11}}}));
   if(_actions.length){ document.getElementById('actFilter').innerHTML=_actFilterChips(); renderActions(); }
   document.getElementById('blotFilter').innerHTML=_blotFilterChips();
   const bq=document.getElementById('blotQ'); if(bq) bq.value=state.blotQ||'';
@@ -1571,16 +1577,16 @@ function renderMethod(){
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Sleeves &amp; overlays</div>
-      <table class="tbl"><thead><tr><th>Sleeve</th><th class="r">Target</th><th>Mechanism</th></tr></thead>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Sleeve</th><th class="r">Target</th><th>Mechanism</th></tr></thead>
       <tbody>${['A','B','C','D'].map(sleeveRow).join('')}
         <tr><td>${sleeveChip('TILT')} <strong>${esc(sm.TILT.name)}</strong></td><td class="r num">${pct(sm.TILT.alloc_tilt||0.1,0)}</td><td style="font-size:12.5px;color:var(--t2)">${esc(sm.TILT.desc)}</td></tr>
         <tr><td><span class="sl-chip" style="background:#8a8a82">GATE</span> <strong>Breadth de-risk</strong></td><td class="r num">—</td><td style="font-size:12.5px;color:var(--t2)">Below ${pct(rg.off_threshold,0)} S&amp;P 500 breadth, shift ${pct(rg.derisk_fraction,0)} of NAV to ${rg.fallback_ticker}; re-engage above ${pct(rg.on_threshold,0)}.</td></tr>
-      </tbody></table>
+      </tbody></table></div>
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Value of the overlays (backtest, engine figures)</div>
-      <table class="tbl"><thead><tr><th>Metric</th><th class="r">Ungated blend</th><th class="r">+ De-risk gate</th><th class="r">+ EM tilt (deployed)</th></tr></thead>
-      <tbody>${['sharpe','cagr','total_return','max_dd'].map(cmp).join('')}</tbody></table>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Metric</th><th class="r">Ungated blend</th><th class="r">+ De-risk gate</th><th class="r">+ EM tilt (deployed)</th></tr></thead>
+      <tbody>${['sharpe','cagr','total_return','max_dd'].map(cmp).join('')}</tbody></table></div>
       <div class="card-note" style="margin-top:8px">The de-risk gate is the material risk control: it lifts Sharpe and roughly halves max drawdown. The EM tilt is a marginal, weak-evidence addition.</div>
     </div>
     <div class="grid2">
