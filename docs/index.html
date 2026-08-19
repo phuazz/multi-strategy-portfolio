@@ -685,7 +685,7 @@ function renderPnlStrip(elId){
       <div class="kpi-val ${signClass(m)}">${pctSigned(m,2)}</div>
       <div class="kpi-sub">SPY ${pctSigned(spy,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span></div></div>`;
   }).join('');
-  const intra=`<div class="kpi" id="ovIntraday" title="Live during market hours only: the weighted move of constituent ETF quotes since each market's prior close (non-USD in local currency, via a public quote proxy). When markets are closed it shows 'Markets closed' and the model's last completed session (the calendar-anchored 1-day) rather than a stale figure.">
+  const intra=`<div class="kpi" id="ovIntraday" title="The NAV contribution of holdings whose own quote is under 30 minutes old, measured against each market's prior session close (non-USD in local currency, via a public quote proxy). Holdings that are not trading contribute nothing rather than contributing their last completed session, and the SPY comparator appears only when SPY itself is live. Below 50% of NAV actually trading the card shows 'Markets closed' and the model's last completed session instead — a book spanning New York and Xetra is often only part-open, so live coverage is stated whenever it is under 95%.">
     <div class="kpi-label">Intraday P&amp;L <span class="livedot off" id="liveDot"></span></div>
     <div class="kpi-val muted" id="intraVal">…</div><div class="kpi-sub" id="intraSub">fetching live quotes…</div></div>`;
   document.getElementById(elId).innerHTML = intra + hist;
@@ -745,6 +745,27 @@ async function _pool(items, fn, n=5){
   return out;
 }
 function startIntraday(){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer=null;} refreshIntraday(); _intraTimer=setInterval(refreshIntraday, 60000); }
+/* Liveness is judged PER HOLDING, not by the newest quote in the book.
+
+   The old test was Math.max over every quote timestamp, so a single open
+   market held the whole card in the live branch. Measured Wed 19 Aug 2026 at
+   08:24 New York -- Xetra open, US pre-market -- the card read "Intraday P&L
+   -1.05% · SPY -0.68% · live" while 85.9% of NAV was still quoting the
+   previous close. The figure was mostly yesterday's session wearing a live dot,
+   the same class of fault as the chartPreviousClose bug: a real number on the
+   wrong basis, confidently labelled.
+
+   Two rules now. A holding counts as live only if ITS OWN quote is under
+   FRESH_MIN old, and only live holdings contribute -- a stale name adds
+   nothing rather than adding yesterday. And the card claims an intraday read
+   only when live holdings clear LIVE_MIN_COVERAGE of NAV; below that it falls
+   through to the last completed session, saying how little is actually trading.
+
+   The SPY comparator is held to the same test. Differencing a live portfolio
+   move against a stale index is the like-for-like error in miniature, and is
+   exactly what produced that "SPY -0.68%". */
+const FRESH_MIN = 30;             // minutes; an older quote is not "now"
+const LIVE_MIN_COVERAGE = 0.50;   // share of NAV that must genuinely be trading
 async function refreshIntraday(){
   const card=document.getElementById('ovIntraday');
   if(!card){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer=null;} return; }   // left Overview
@@ -753,22 +774,33 @@ async function refreshIntraday(){
   const spyQ=await _yfQuote('SPY');
   const valEl=document.getElementById('intraVal'), subEl=document.getElementById('intraSub'), dot=document.getElementById('liveDot');
   if(!valEl) return;
-  let pnl=0, cov=0, tmax=0;
-  quotes.forEach((q,i)=>{ if(q&&isNum(q.ret)){ pnl+=(rows[i].weight||0)*q.ret; cov+=(rows[i].weight||0); if(q.t) tmax=Math.max(tmax,q.t); } });
-  if(cov<0.01){ valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px'; subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; return; }
-  const ageMin = tmax ? (Date.now()/1000 - tmax)/60 : 1e9;   // freshness of the latest quote
-  if(ageMin < 30){                                            // a market is actively trading -> genuine live intraday
-    const ex=(spyQ&&isNum(spyQ.ret))? pnl-spyQ.ret : null;
+
+  const nowS=Date.now()/1000, ageMinOf=q=>(q&&isNum(q.t))?(nowS-q.t)/60:Infinity;
+  let pnl=0, liveW=0, anyW=0, tmax=0, tmaxLive=0;
+  quotes.forEach((q,i)=>{
+    if(!q||!isNum(q.ret)) return;
+    const w=rows[i].weight||0;
+    anyW+=w;
+    if(q.t) tmax=Math.max(tmax,q.t);
+    if(ageMinOf(q)<FRESH_MIN){ liveW+=w; pnl+=w*q.ret; if(q.t) tmaxLive=Math.max(tmaxLive,q.t); }
+  });
+  if(anyW<0.01){ valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px'; subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; return; }
+
+  const spyLive = spyQ && isNum(spyQ.ret) && ageMinOf(spyQ)<FRESH_MIN;
+  if(liveW>=LIVE_MIN_COVERAGE){                               // enough of the book is genuinely trading
+    const ex = spyLive ? pnl-spyQ.ret : null;
     valEl.textContent=pctSigned(pnl,2); valEl.className='kpi-val '+signClass(pnl); valEl.style.fontSize='';
     if(dot) dot.className='livedot';
-    subEl.innerHTML=(spyQ&&isNum(spyQ.ret)?`SPY ${pctSigned(spyQ.ret,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span> · `:'')
-      +'live '+new Date(tmax*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+(cov<0.95?` · ${Math.round(cov*100)}% cov`:'');
-  } else {                                                    // nothing trading -> no intraday; show the model's last session
+    subEl.innerHTML=(spyLive?`SPY ${pctSigned(spyQ.ret,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span> · `:'')
+      +'live '+new Date((tmaxLive||tmax)*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})
+      +(liveW<0.95?` · ${Math.round(liveW*100)}% of NAV trading`:'');
+  } else {                                                    // too little trading to call it intraday
     if(dot) dot.className='livedot off';
     valEl.textContent='Markets closed'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
     const p1=DS.pnl['1D']||{}, d1=p1.model, s1=p1.SPY, ex1=(isNum(d1)&&isNum(s1))?d1-s1:null;
     const qd=tmax? fmtDateShort(new Date(tmax*1000).toISOString().slice(0,10)) : '';
-    subEl.innerHTML='last session '+pctSigned(d1,2)+(isNum(ex1)?` · vs SPY ${pctSigned(ex1,2)}`:'')+(qd?` · quotes ${qd}`:'');
+    subEl.innerHTML='last session '+pctSigned(d1,2)+(isNum(ex1)?` · vs SPY ${pctSigned(ex1,2)}`:'')+(qd?` · quotes ${qd}`:'')
+      +(liveW>0.005?` · only ${Math.round(liveW*100)}% of NAV trading now`:'');
   }
 }
 
