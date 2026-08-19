@@ -72,6 +72,18 @@ like-for-like; per-figure tooltips carry the basis and the as-at date. A US-equi
 is deliberately not used alone, as it would flatter or punish a global multi-asset rotation on
 asset mix. No currency figure appears in the line: this is a paper model with no capital.
 
+**Live session tiles.** The P&L strip opens with **US session** and **Europe session** rather than
+one blended intraday figure. The book is ~78% US-listed and ~20% Xetra, so the two venues barely
+overlap: a single number was part-stale during European hours, and gating it on half of total NAV
+made it dark for the whole European session instead, since Xetra can never reach that share. Each
+tile is the **NAV contribution** of its own venue — weight times return, so the two are additive —
+and each is judged live only when at least half of *its own* sleeve is quoting inside 30 minutes.
+Holdings that are not trading contribute nothing rather than contributing their last completed
+session, the SPY comparator appears only when SPY itself is live (scaled to the sleeve's weight so
+the comparison is like-for-like), and any holding on a third calendar is reported as a residual
+rather than dropped. When a venue is closed its tile says so; the 1-Day tile carries the last
+completed session for the whole book.
+
 **Execution convention.** A rebalance dated Friday is assumed **filled at that Friday's close**,
 not on the Monday. Each sleeve reads its signal at the session *before* the rebalance date
 (`prev_idx = closes.index.get_loc(rd) - 1`, normally Thursday), stamps the target weights on the

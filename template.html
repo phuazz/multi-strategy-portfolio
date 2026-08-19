@@ -103,8 +103,12 @@ a{color:var(--b-text);text-decoration:none}
 .kpi-sub{font-size:11px;color:var(--t3-text);margin-top:3px}
 
 /* P&L strip */
-.pnl-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--bd);border:1px solid var(--bd);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:18px}
-@media(max-width:860px){.pnl-strip{grid-template-columns:repeat(2,1fr)}}
+/* Five tiles since the intraday figure split into US and Europe sessions.
+   auto-fit rather than fixed counts so the row never leaves a ragged empty
+   cell, which the 1px gap on a tinted background would render as a stray line. */
+.pnl-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;
+  background:var(--bd);border:1px solid var(--bd);border-radius:var(--radius-lg);
+  overflow:hidden;margin-bottom:18px}
 @media(max-width:560px){.pnl-strip{grid-template-columns:1fr}}
 .livedot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--g);margin-left:5px;vertical-align:middle;animation:pulse 1.8s infinite}
 .livedot.off{background:var(--t4);animation:none}
@@ -685,10 +689,15 @@ function renderPnlStrip(elId){
       <div class="kpi-val ${signClass(m)}">${pctSigned(m,2)}</div>
       <div class="kpi-sub">SPY ${pctSigned(spy,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span></div></div>`;
   }).join('');
-  const intra=`<div class="kpi" id="ovIntraday" title="The NAV contribution of holdings whose own quote is under 30 minutes old, measured against each market's prior session close (non-USD in local currency, via a public quote proxy). Holdings that are not trading contribute nothing rather than contributing their last completed session, and the SPY comparator appears only when SPY itself is live. Below 50% of NAV actually trading the card shows 'Markets closed' and the model's last completed session instead — a book spanning New York and Xetra is often only part-open, so live coverage is stated whenever it is under 95%.">
-    <div class="kpi-label">Intraday P&amp;L <span class="livedot off" id="liveDot"></span></div>
-    <div class="kpi-val muted" id="intraVal">…</div><div class="kpi-sub" id="intraSub">fetching live quotes…</div></div>`;
-  document.getElementById(elId).innerHTML = intra + hist;
+  // One blended intraday number was wrong for this book. It is ~78% US-listed
+  // and ~20% Xetra, so the two venues are almost never open together: a single
+  // figure is either part-stale or dark for the whole European session. Split
+  // per venue, each with its own clock.
+  const sessionTile=(v)=>`<div class="kpi" id="ov-${v.key}" title="${esc(v.tip)}">
+    <div class="kpi-label">${v.label} <span class="livedot off" id="dot-${v.key}"></span></div>
+    <div class="kpi-val muted" id="val-${v.key}">…</div>
+    <div class="kpi-sub" id="sub-${v.key}">fetching live quotes…</div></div>`;
+  document.getElementById(elId).innerHTML = VENUES.map(sessionTile).join('') + hist;
   startIntraday();
 }
 
@@ -765,42 +774,102 @@ function startIntraday(){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer
    move against a stale index is the like-for-like error in miniature, and is
    exactly what produced that "SPY -0.68%". */
 const FRESH_MIN = 30;             // minutes; an older quote is not "now"
-const LIVE_MIN_COVERAGE = 0.50;   // share of NAV that must genuinely be trading
+const LIVE_MIN_COVERAGE = 0.50;   // share of a VENUE's own weight that must be trading
+
+/* Venues are split because the two sessions barely overlap.
+
+   A single blended intraday figure failed this book in both directions. During
+   the European session it read as a live portfolio move while ~80% of NAV was
+   quoting the previous US close; gating that on 50% of TOTAL NAV then made the
+   card dark for the whole European session instead, because Xetra can never
+   reach half the book. Neither is a fair reading of "how is the portfolio doing
+   right now" for a portfolio that trades in two time zones.
+
+   Each tile is therefore the NAV CONTRIBUTION of its own venue -- weight times
+   return, not the venue's internal return -- so US and Europe are additive and
+   sum to the portfolio's live move. The sub-line says "of NAV" for that reason:
+   a +0.42% US tile on a 78% sleeve means the US holdings moved ~0.54%, and the
+   tooltip gives that figure so the distinction cannot be misread.
+
+   Classification is by the quote symbol's suffix, which is what actually
+   determines the trading calendar. Anything matching neither list falls to a
+   residual that is reported on both tiles when material rather than silently
+   dropped -- today that is 159801.SZ at 2% of NAV on the Shenzhen calendar. */
+const EU_SUFFIX = /\.(DE|L|PA|AS|MI|SW|MC|BR|VI|ST|CO|HE|IR|LS)$/i;
+const VENUES = [
+  {key:'us', label:'US session', match:s=>!s.includes('.'),
+   tip:'NAV contribution of US-listed holdings whose own quote is under 30 minutes old, '
+      +'measured against the prior US close. Contribution, not the venue return: a figure '
+      +'here plus the Europe tile equals the portfolio move so far. Shows "Closed" when '
+      +'under half of the US sleeve is quoting live; the 1-Day tile carries the last '
+      +'completed session for the whole book.'},
+  {key:'eu', label:'Europe session', match:s=>EU_SUFFIX.test(s),
+   tip:'NAV contribution of European-listed holdings (Xetra and peers) whose own quote is '
+      +'under 30 minutes old, measured against the prior European close and quoted in local '
+      +'currency, so it excludes the EUR/USD move the USD book actually carries. '
+      +'Contribution, not the venue return. Shows "Closed" when under half of the European '
+      +'sleeve is quoting live.'},
+];
+function venueOf(sym){
+  for(const v of VENUES) if(v.match(sym)) return v.key;
+  return 'other';
+}
 async function refreshIntraday(){
-  const card=document.getElementById('ovIntraday');
-  if(!card){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer=null;} return; }   // left Overview
+  if(!document.getElementById('ov-us')){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer=null;} return; }  // left Overview
   const rows=DS.weights.rows.filter(r=>(r.weight||0)>1e-4);
   const quotes=await _pool(rows, r=>_yfQuote(r.tradeAs||r.ticker), 5);
   const spyQ=await _yfQuote('SPY');
-  const valEl=document.getElementById('intraVal'), subEl=document.getElementById('intraSub'), dot=document.getElementById('liveDot');
-  if(!valEl) return;
+  if(!document.getElementById('val-us')) return;              // tab switched mid-fetch
 
   const nowS=Date.now()/1000, ageMinOf=q=>(q&&isNum(q.t))?(nowS-q.t)/60:Infinity;
-  let pnl=0, liveW=0, anyW=0, tmax=0, tmaxLive=0;
-  quotes.forEach((q,i)=>{
+  const agg={};                                               // per venue, plus 'other'
+  const bucket=k=>(agg[k]=agg[k]||{pnl:0, liveW:0, totW:0, anyW:0, tLive:0, tAny:0});
+  rows.forEach((r,i)=>{
+    const sym=r.tradeAs||r.ticker, w=r.weight||0, b=bucket(venueOf(sym)), q=quotes[i];
+    b.totW+=w;                                                // denominator: everything held here
     if(!q||!isNum(q.ret)) return;
-    const w=rows[i].weight||0;
-    anyW+=w;
-    if(q.t) tmax=Math.max(tmax,q.t);
-    if(ageMinOf(q)<FRESH_MIN){ liveW+=w; pnl+=w*q.ret; if(q.t) tmaxLive=Math.max(tmaxLive,q.t); }
+    b.anyW+=w; if(q.t) b.tAny=Math.max(b.tAny,q.t);
+    if(ageMinOf(q)<FRESH_MIN){ b.liveW+=w; b.pnl+=w*q.ret; if(q.t) b.tLive=Math.max(b.tLive,q.t); }
   });
-  if(anyW<0.01){ valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px'; subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; return; }
-
   const spyLive = spyQ && isNum(spyQ.ret) && ageMinOf(spyQ)<FRESH_MIN;
-  if(liveW>=LIVE_MIN_COVERAGE){                               // enough of the book is genuinely trading
-    const ex = spyLive ? pnl-spyQ.ret : null;
-    valEl.textContent=pctSigned(pnl,2); valEl.className='kpi-val '+signClass(pnl); valEl.style.fontSize='';
-    if(dot) dot.className='livedot';
-    subEl.innerHTML=(spyLive?`SPY ${pctSigned(spyQ.ret,2)} · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span> · `:'')
-      +'live '+new Date((tmaxLive||tmax)*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})
-      +(liveW<0.95?` · ${Math.round(liveW*100)}% of NAV trading`:'');
-  } else {                                                    // too little trading to call it intraday
-    if(dot) dot.className='livedot off';
-    valEl.textContent='Markets closed'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
-    const p1=DS.pnl['1D']||{}, d1=p1.model, s1=p1.SPY, ex1=(isNum(d1)&&isNum(s1))?d1-s1:null;
-    const qd=tmax? fmtDateShort(new Date(tmax*1000).toISOString().slice(0,10)) : '';
-    subEl.innerHTML='last session '+pctSigned(d1,2)+(isNum(ex1)?` · vs SPY ${pctSigned(ex1,2)}`:'')+(qd?` · quotes ${qd}`:'')
-      +(liveW>0.005?` · only ${Math.round(liveW*100)}% of NAV trading now`:'');
+  const other=agg.other||{totW:0};
+  const residual=other.totW>0.005 ? ` · ${Math.round(other.totW*100)}% of NAV on other calendars` : '';
+  const hhmm=t=>new Date(t*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+
+  for(const v of VENUES){
+    const b=bucket(v.key);
+    const valEl=document.getElementById('val-'+v.key), subEl=document.getElementById('sub-'+v.key),
+          dot=document.getElementById('dot-'+v.key);
+    if(!valEl) continue;
+    if(b.totW<1e-4){                                          // sleeve not held at all
+      valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
+      subEl.textContent='not held'; if(dot) dot.className='livedot off'; continue;
+    }
+    if(b.anyW<0.01){
+      valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
+      subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; continue;
+    }
+    // Liveness is measured against this venue's OWN weight, not the whole book:
+    // Xetra can never reach half of NAV, so a total-NAV gate would keep it dark.
+    const share=b.liveW/b.totW;
+    if(share>=LIVE_MIN_COVERAGE){
+      valEl.textContent=pctSigned(b.pnl,2); valEl.className='kpi-val '+signClass(b.pnl); valEl.style.fontSize='';
+      if(dot) dot.className='livedot';
+      const venueRet=b.liveW>0 ? b.pnl/b.liveW : null;         // what the sleeve itself did
+      const ex=(v.key==='us'&&spyLive)? b.pnl-spyQ.ret*b.liveW : null;   // like-for-like: scale SPY to the same weight
+      subEl.innerHTML=`of NAV · ${Math.round(b.totW*100)}% sleeve`
+        +(isNum(venueRet)?` moved ${pctSigned(venueRet,2)}`:'')
+        +(isNum(ex)?` · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span>`:'')
+        +` · live ${hhmm(b.tLive||b.tAny)}`
+        +(share<0.95?` · ${Math.round(share*100)}% quoting`:'')+residual;
+    }else{
+      if(dot) dot.className='livedot off';
+      valEl.textContent='Closed'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
+      const qd=b.tAny? fmtDateShort(new Date(b.tAny*1000).toISOString().slice(0,10)) : '';
+      subEl.innerHTML=`${Math.round(b.totW*100)}% of NAV`+(qd?` · quotes ${qd}`:'')
+        +(b.liveW>0.005?` · only ${Math.round(share*100)}% quoting`:'')
+        +` · see 1-Day`+residual;
+    }
   }
 }
 
