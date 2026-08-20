@@ -559,18 +559,19 @@ function renderWhatChanged(){
   const quiet=isNum(latest.turnover)&&isNum(p10)&&latest.turnover<p10;
 
   const sect=(title,meta)=>`<div class="wc-sect">${title}${meta?` <span class="wc-meta">${meta}</span>`:''}</div>`;
-  // Turnover counts every move; the rows below count only moves at or above the
-  // blotter's 0.5pp threshold. Those are different measures, so the count is
-  // labelled with its threshold — otherwise it reads as a contradiction against
+  // Turnover counts every move; the rows below are the blotter's selection --
+  // every entry and exit, plus resizes of at least 0.5pp. Those are different
+  // measures and will not tally, so the count is labelled as "listed" and the
+  // rule stated in the footnote, rather than reading as a contradiction against
   // the Trades tab, which reports the unfiltered trade count for the same date.
-  const plural=n=>`${n} move${n===1?'':'s'} ≥0.5pp`;
+  const plural=n=>`${n} move${n===1?'':'s'} listed`;
   const row=d=>`<div class="wc-row">${_actChip(d.action)} <strong>${esc(d.ticker)}</strong>`
     +`<span class="wc-name" title="${esc(d.name||'')}">${esc(d.name||'')}</span>`
     +`<span class="wc-w ${signClass(d.delta)}">${pctSigned(d.delta,1)}`
     +` <span class="muted">(${pct(d.from,1)}→${pct(d.to,1)})</span></span></div>`;
   const CAP=5;
   const rows=list=>{
-    if(!list.length) return `<div class="wc-quiet">No position moved by more than 0.5pp, the blotter's reporting threshold.</div>`;
+    if(!list.length) return `<div class="wc-quiet">Nothing entered or exited, and no position resized by more than 0.5pp.</div>`;
     const rest=list.length-CAP;
     return list.slice(0,CAP).map(row).join('')
       +(rest>0?`<div class="wc-row"><span class="muted" style="font-size:12px">+${rest} more —`
@@ -632,7 +633,7 @@ function renderWhatChanged(){
     <div class="card-h"><div class="card-title">What changed</div>
       <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
     ${body}
-    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Thursday) and the model assumes the switch is <strong>priced at the Friday close shown</strong>, so the first return it earns is Friday close to Monday close. The gap between signal and fill is one full session, not a weekend.</div></div>`;
+    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Thursday) and the model assumes the switch is <strong>priced at the Friday close shown</strong>, so the first return it earns is Friday close to Monday close. The gap between signal and fill is one full session, not a weekend. Every entry and exit is listed however small; resizes appear once they move at least 0.5pp of NAV, so the count will not tally with the turnover figure beside it.</div></div>`;
 }
 
 /* ============================ OVERVIEW ============================ */
@@ -1526,8 +1527,9 @@ function renderTrades(){
           <input type="date" class="filter-input" id="blotFrom" style="width:140px" onchange="setBlotFrom(this.value)" title="from date">
           <input type="date" class="filter-input" id="blotTo" style="width:140px" onchange="setBlotTo(this.value)" title="to date">
           <div class="fbtns" id="blotFilter"></div><span class="card-note" id="blotCount"></span></div></div>
-      <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Trade</th><th class="r">From</th><th class="r">To</th><th class="r">Δ weight</th></tr></thead>
+      <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Sleeve</th><th>ETF &amp; name</th><th>Action</th><th class="r">Within sleeve</th><th class="r">NAV weight</th><th class="r">Δ NAV</th></tr></thead>
       <tbody id="blotBody"></tbody></table></div>
+      <div class="card-note" style="margin-top:8px"><strong>Within sleeve</strong> is the holding's share of its own sleeve — how the rotation ranked it against its peers. <strong>NAV weight</strong> is what it is worth to the book, after the sleeve allocation and the overlay. The two move independently: a name can gain conviction inside its sleeve while losing NAV weight if the de-risk gate is engaged. Both are derived from the engine's published weekly weights and reconcile exactly to its own trade history. The engine's <a href="https://phuazz.github.io/breadth-thrust-etf/" target="_blank" rel="noopener">Trade History tab</a> adds the breadth or momentum reading that triggered each trade, which is not carried in the feeds this monitor consumes.</div>
     </div>
     ${_actions.length?`<div class="card">
       <div class="card-h"><div class="card-title">Overlay actions — de-risk gate &amp; EM tilt</div><div class="fbtns" id="actFilter"></div></div>
@@ -1577,12 +1579,42 @@ function latestRebalance(){
 }
 function _buildBlotterFromMatrix(){
   const ah=DS.trades.alloc_history; if(!ah) return [];
-  const dates=ah.dates, W=ah.weights, nm=ah.ticker_name||{}, out=[];
+  const dates=ah.dates, W=ah.weights, nm=ah.ticker_name||{}, sl=ah.ticker_sleeve||{}, out=[];
   const tickers=Object.keys(W).filter(t=>t!=='Other');
+  /* Sleeve NAV totals per rebalance, so a holding's WITHIN-SLEEVE weight can be
+     recovered as its NAV weight over its sleeve's. The engine reports both bases
+     and they answer different questions: within-sleeve says how the rotation
+     ranked a name against its peers, NAV says what it is worth to the book.
+     A name can gain conviction inside its sleeve while losing NAV weight, if the
+     overlay is de-risking or the sleeve allocation moved.
+
+     Derived rather than fetched, and verified exact against the engine's own
+     headline.trade_history: sleeve A at 2026-08-14 recovers IUFS 25.2%, IUES
+     19.7%, IUHC 19.4%, SOXX 16.2%, IUSP 14.3%, IUIS 3.8%, CSP1 1.4% -- the
+     engine's published figures to the decimal, with no new feed.
+
+     'Other' is excluded: it is the folded long tail, carries sleeve 'Other', and
+     would otherwise dilute a real sleeve's denominator. */
+  const sleeveTot=dates.map((_,i)=>{
+    const m={};
+    for(const t of tickers){ const s=sl[t]; if(!s||s==='Other') continue; m[s]=(m[s]||0)+(W[t][i]||0); }
+    return m;
+  });
+  const within=(t,i)=>{ const s=sl[t]; if(!s||s==='Other') return null;
+    const tot=sleeveTot[i][s]||0; return tot>1e-9 ? (W[t][i]||0)/tot : null; };
+  /* Entries and exits are listed however small; only resizes must clear 0.5pp.
+     The flat threshold hid them: CSP1 entered sleeve A on 2026-08-14 at 0.5% of
+     NAV, exactly on the boundary, so a genuine new position was filtered out
+     while a 0.6pp trim survived. Crossing zero is a decision about whether to
+     own something at all, which a small weight does not make immaterial. */
   for(let i=1;i<dates.length;i++){
     for(const t of tickers){ const f=W[t][i-1]||0, c=W[t][i]||0, d=c-f;
-      if(Math.abs(d)>0.005){ const action=f<=1e-4&&c>1e-4?'NEW':(f>1e-4&&c<=1e-4?'EXIT':(c>f?'ADD':'TRIM'));
-        out.push({date:dates[i], ticker:t, name:nm[t]||t, from:f, to:c, delta:d, action}); } }
+      const isEntry=f<=1e-4&&c>1e-4, isExit=f>1e-4&&c<=1e-4;
+      if(Math.abs(d)>0.005||isEntry||isExit){
+        const action=isEntry?'NEW':(isExit?'EXIT':(c>f?'ADD':'TRIM'));
+        out.push({date:dates[i], ticker:t, name:nm[t]||t, sleeve:sl[t]||'',
+                  from:f, to:c, delta:d, action,
+                  wFrom:within(t,i-1), wTo:within(t,i)}); } }
   }
   out.sort((a,b)=> a.date<b.date?1:a.date>b.date?-1:Math.abs(b.delta)-Math.abs(a.delta));   // newest first, biggest first
   return out;
@@ -1611,10 +1643,14 @@ function renderBlotter(){
   let rows=_blotter.filter(x=> (af==='all'||x.action===af) && (!fr||x.date>=fr) && (!to||x.date<=to)
     && (!q || (x.ticker||'').toUpperCase().includes(q) || (x.name||'').toUpperCase().includes(q)));
   const total=rows.length; rows=rows.slice(0,250);
+  const wasCell=(cur,prev)=>`${pct(cur,1)}`+(isNum(prev)?` <span class="muted" style="font-size:11px">(was ${pct(prev,1)})</span>`:'');
   b.innerHTML = rows.length ? rows.map(x=>`<tr><td class="num" style="font-size:11px">${fmtDate(x.date)}</td>
-    <td>${_actChip(x.action)} <strong>${esc(x.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(x.name)}</span></td>
-    <td class="r num">${pct(x.from,1)}</td><td class="r num">${pct(x.to,1)}</td>
-    <td class="r num ${signClass(x.delta)}">${pctSigned(x.delta,1)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted" style="padding:14px">No matching trades.</td></tr>';
+    <td>${x.sleeve?sleeveChip(x.sleeve):''}</td>
+    <td><strong>${esc(x.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(x.name)}</span></td>
+    <td>${_actChip(x.action)}</td>
+    <td class="r num">${isNum(x.wTo)?wasCell(x.wTo,x.wFrom):'—'}</td>
+    <td class="r num">${wasCell(x.to,x.from)}</td>
+    <td class="r num ${signClass(x.delta)}">${pctSigned(x.delta,1)}</td></tr>`).join('') : '<tr><td colspan="7" class="muted" style="padding:14px">No matching trades.</td></tr>';
   const cc=document.getElementById('blotCount'); if(cc) cc.textContent=total+' match'+(total===1?'':'es')+(total>250?' · showing 250':'');
 }
 
