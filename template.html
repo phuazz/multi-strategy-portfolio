@@ -219,8 +219,14 @@ const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a
 const WIN_OV=['1W','1M','3M','6M','YTD','1Y','SI'], WIN_PERF=['1W','1M','3M','6M','YTD','1Y','3Y','SI'], WIN_RISK=['1W','1M','6M','YTD','1Y','3Y','SI'];
 let _blotter=[], _actions=[];   // Trades-tab filterable rows
 
+/* Order follows what gets asked first: what do I hold, what changed, then the
+   analysis of it. Allocation and Trades were behind Attribution until
+   2026-08-20, which put a contribution decomposition ahead of the positions it
+   decomposes. Risk & Regime stays late deliberately — the overlay state is
+   already on the Overview headline and masthead pill, so its detail is
+   reference material rather than a first question. */
 const TABS = [
-  ['overview','Overview'], ['attribution','Attribution'], ['allocation','Allocation'], ['trades','Trades'], ['performance','Performance'],
+  ['overview','Overview'], ['allocation','Allocation'], ['trades','Trades'], ['attribution','Attribution'], ['performance','Performance'],
   ['risk','Risk & Regime'], ['signals','Signals'], ['health','Data Health'], ['method','Methodology'],
 ];
 const SLEEVE_COLORS = {A:'#2563eb',B:'#1a8754',C:'#b45309',D:'#7c3aed',TILT:'#0891b2',CASH:'#8a8a82'};
@@ -1500,7 +1506,7 @@ function renderTrades(){
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
   el.innerHTML = `
-    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Portfolio actions</strong> (below) highlights the macro de-risk and EM-tilt switches. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
+    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Overlay actions</strong>, at the foot of this tab, highlights the macro de-risk and EM-tilt switches — those fire about twice a year, so they sit below the week-to-week record rather than in front of it. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
       <div class="card">
         <div class="card-h"><div class="card-title">${latestTitle}</div><div class="card-note">turnover ${pct(latest.turnover,1)} · ${latest.n} ${latest.type==='initial'?'positions':'trades'}</div></div>
@@ -1513,12 +1519,6 @@ function renderTrades(){
         <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each weekly rebalance since inception. First bar = initial deployment.</div>
       </div>
     </div>
-    ${_actions.length?`<div class="card">
-      <div class="card-h"><div class="card-title">Overlay actions — de-risk gate &amp; EM tilt</div><div class="fbtns" id="actFilter"></div></div>
-      <div style="overflow-x:auto;max-height:360px"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Detail</th></tr></thead>
-      <tbody id="actBody"></tbody></table></div>
-      <div class="card-note" style="margin-top:6px">The model's macro overlay switches (the engine's de-risk gate and EM-tilt events) — a subset of all trading. Weekly sector rotations are in the blotter below.</div>
-    </div>`:''}
     <div class="card">
       <div class="card-h"><div class="card-title">Trade blotter</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1528,7 +1528,13 @@ function renderTrades(){
           <div class="fbtns" id="blotFilter"></div><span class="card-note" id="blotCount"></span></div></div>
       <div style="overflow-x:auto;max-height:460px"><table class="tbl"><thead><tr><th>Date</th><th>Trade</th><th class="r">From</th><th class="r">To</th><th class="r">Δ weight</th></tr></thead>
       <tbody id="blotBody"></tbody></table></div>
-    </div>`;
+    </div>
+    ${_actions.length?`<div class="card">
+      <div class="card-h"><div class="card-title">Overlay actions — de-risk gate &amp; EM tilt</div><div class="fbtns" id="actFilter"></div></div>
+      <div style="overflow-x:auto;max-height:360px"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Detail</th></tr></thead>
+      <tbody id="actBody"></tbody></table></div>
+      <div class="card-note" style="margin-top:6px">The model's macro overlay switches (the engine's de-risk gate and EM-tilt events) — a subset of all trading, and rare: roughly two a year against a weekly rebalance. Placed last because of that; the week-to-week sector rotation is in the blotter above.</div>
+    </div>`:''}`;
   const wk=(t.weekly&&t.weekly.length)?t.weekly:log.slice().reverse();   // full weekly series since inception
   plot(document.getElementById('trTurnover'),[{type:'bar',x:wk.map(e=>e.date),y:wk.map(e=>(e.turnover||0)*100),
     marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
