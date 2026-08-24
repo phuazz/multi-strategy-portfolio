@@ -38,10 +38,10 @@
     "BIL": {"name": "T-Bills (cash)", "label": "Cash (T-Bills)", "type": "yfinance", "ticker": "BIL", "color": "#a16207"}
   },
   "freshness": {
-    "price_bdays": 4,
+    "price_sessions": 0,
     "regime_bdays": 8,
     "strategy_bdays": 12,
-    "note": "Business-day lag budgets. The live NAV (live_track) refreshes daily; the breadth/regime panel and the strategy-equity backtest regenerate only in the weekly run, so their data trails the live NAV by up to ~1.5 weeks by design — hence wider budgets. The headline model is extended daily via live_track regardless."
+    "note": "Two bases, on purpose. The live NAV (live_track) refreshes daily and is judged in NYSE SESSIONS against the last completed session: price_sessions 0 means the page must carry the session that has closed, and one session behind renders STALE. Tightened from a 4-business-day budget on 2026-08-24 — that budget read 'ok' through the 2026-08-21 miss, and no business-day threshold could have caught it without false-alarming on a cron that slips past midnight UTC. The breadth/regime panel and the strategy-equity backtest regenerate only in the weekly run, so their data trails the live NAV by up to ~1.5 weeks by design — they keep wide business-day budgets. The headline model is extended daily via live_track regardless."
   },
   "etf_meta": {
     "EEM":       {"name": "MSCI Emerging Markets",            "sleeve": "TILT", "assetClass": "Equity",      "geo": "Emerging",  "theme": "Broad EM",          "tradeAs": "EEM"},

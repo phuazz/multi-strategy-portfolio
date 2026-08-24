@@ -10,12 +10,30 @@ Levels: 'ok' < 'warn' < 'stale'. Nothing here hard-stops the build (a partial,
 clearly-flagged dashboard beats no dashboard); structural impossibilities have
 already raised in the adapter. Business-day lags use numpy.busday_count so the
 weekend never inflates a lag — no hand-rolled day arithmetic.
+
+Two different freshness bases, deliberately (2026-08-24):
+
+  - The weekly feeds (breadth/regime panel, strategy equity) keep plain
+    business-day budgets. They trail by design, the slack is wide, and a
+    holiday never matters at that width.
+  - The live Price / NAV feed is judged against the TRUE last completed NYSE
+    session instead. A business-day budget cannot express "one session behind"
+    for a daily feed: on 2026-08-21 the engine's own guard blocked publication
+    and the monitor baked Thursday's mark on a Friday — busday_count read 1 —
+    while a perfectly healthy run whose 23:40 UTC cron slips past midnight also
+    reads 1. No threshold separates those two, so any budget either misses the
+    real miss or false-alarms nightly. The calendar anchor separates them
+    cleanly, and it is the same measure check_capture_integrity.py and
+    sentinel_check.py already use, so the page, the build guard and the
+    outside-in sentinel now agree by construction rather than by coincidence.
 """
 from __future__ import annotations
 
 import datetime as dt
 
 import numpy as np
+
+from nyse_sessions import last_completed_session, sessions_behind
 
 _RANK = {"ok": 0, "warn": 1, "stale": 2}
 
@@ -28,8 +46,14 @@ def _bday_lag(asof: str | None, run_date: dt.date) -> int | None:
 
 
 def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
-        bench_ok: bool, bench_note: str) -> dict:
+        bench_ok: bool, bench_note: str,
+        now_utc: dt.datetime | None = None) -> dict:
+    """``now_utc`` anchors the live feed's session check. It is separate from
+    ``run_date`` because the verdict needs the INSTANT, not the date: whether
+    Friday's session has closed depends on the time of day, and run_date has
+    already thrown that away. Defaults to the real clock; tests pass it."""
     fb = registry["freshness"]
+    now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
     live = bundle["live_track.json"]
     overlay = bundle["risk_overlay.json"]
     multi = bundle["multi_strategy.json"]
@@ -39,19 +63,32 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
 
     feeds = []
 
-    def add(name, asof, lag, budget, computed):
+    def add(name, asof, lag, budget, computed, basis="business days", warn_at=None):
+        """``warn_at``: a lag strictly above this is 'warn'. Defaults to
+        ``budget - 2`` — the approach band that suits the wide weekly budgets.
+        Pass ``warn_at=budget`` for a tight daily feed, which steps straight
+        from ok to stale: at a budget of 0 there is no middle ground to occupy,
+        and a permanent 'warn' on a healthy feed would train the eye to ignore
+        the banner."""
         level = "ok"
         if lag is None:
             level = "warn"
         elif lag > budget:
             level = "stale"
-        elif lag > budget - 2:
+        elif lag > (budget - 2 if warn_at is None else warn_at):
             level = "warn"
         feeds.append({"feed": name, "asOf": asof, "bday_lag": lag, "budget_bdays": budget,
-                      "level": level, "computed_at": computed})
+                      "level": level, "computed_at": computed, "basis": basis})
 
-    add("Price / NAV (live_track)", price_asof, _bday_lag(price_asof, run_date),
-        fb["price_bdays"], live.get("computed_at_utc"))
+    # Live NAV: sessions behind the last completed NYSE session (see module
+    # docstring). Budget 0 = the page must show the session that has closed.
+    price_budget = fb.get("price_sessions", 0)
+    price_lag = None
+    if price_asof:
+        price_lag = sessions_behind(dt.date.fromisoformat(price_asof[:10]),
+                                    last_completed_session(now_utc))
+    add("Price / NAV (live_track)", price_asof, price_lag, price_budget,
+        live.get("computed_at_utc"), basis="NYSE sessions", warn_at=price_budget)
     add("Breadth / regime panel (risk_overlay)", regime_asof, _bday_lag(regime_asof, run_date),
         fb["regime_bdays"], overlay.get("computed_at_utc"))
     add("Strategy equity (multi_strategy)", multi.get("common_end"),
