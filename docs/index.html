@@ -1658,8 +1658,10 @@ function renderHealth(){
   const h=DS.health, m=DS.meta, rc=DS.stats.reconcile, ch=DS.changes;
   const lvlTxt={ok:'All checks passed',warn:'Attention — a feed is near its freshness budget',stale:'Stale or inconsistent data detected'}[h.level];
   const lvlCls={ok:'pos',warn:'',stale:'neg'}[h.level];
+  const feedUnit=f=>((f.basis||'business days').indexOf('session')>=0?'sessions':'bdays');
   const feedRow=f=>`<tr><td>${esc(f.feed)}</td><td class="num">${fmtDate(f.asOf)}</td>
-    <td class="r num">${f.bday_lag==null?'—':f.bday_lag}</td><td class="r num">${f.budget_bdays}</td>
+    <td class="r num" title="Measured in ${esc(f.basis||'business days')}">${f.bday_lag==null?'—':f.bday_lag}</td>
+    <td class="r num">${f.budget_bdays} <span class="muted" style="font-size:11px">${feedUnit(f)}</span></td>
     <td class="c"><span class="pill pill-health-${f.level}" style="padding:2px 8px">${f.level.toUpperCase()}</span></td>
     <td class="num muted" style="font-size:11px">${esc((f.computed_at||'').replace('T',' ').slice(0,16))}</td></tr>`;
   const recRow=k=>{ const ok=(rc.diffs[k]||0)<=rc.tol[k];
@@ -1671,13 +1673,13 @@ function renderHealth(){
       <div class="card-h"><div class="card-title">Data integrity status</div><span class="pill pill-health-${h.level}">${h.level==='ok'?'✓ OK':h.level==='warn'?'⚠ WARN':'✕ STALE'}</span></div>
       <div style="font-size:18px;font-weight:700;margin-bottom:6px" class="${lvlCls}">${lvlTxt}</div>
       ${h.messages.length?`<ul style="margin:8px 0 0 18px;font-size:13px;color:var(--t2)">${h.messages.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<div class="muted" style="font-size:13px">No warnings. All feeds within budget; regime since-date reconciles with the latest event; recomputed statistics match the engine.</div>'}
-      <div class="callout" style="margin-top:14px;font-size:12px">This tab exists because the upstream engine once published a confident regime state on an 11-week-stale breadth panel. The monitor now checks feed freshness (business-day lag vs budget), the regime since-date against the latest switch event, and recomputed statistics against the engine's own figures — on every build.</div>
+      <div class="callout" style="margin-top:14px;font-size:12px">This tab exists because the upstream engine once published a confident regime state on an 11-week-stale breadth panel. The monitor now checks feed freshness — the live NAV against the last completed NYSE session, the weekly feeds against business-day budgets — plus the regime since-date against the latest switch event, and recomputed statistics against the engine's own figures, on every build.</div>
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Feed freshness</div>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r">Lag (bdays)</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r">Lag</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
       <tbody>${h.feeds.map(feedRow).join('')}</tbody></table></div>
-      <div class="card-note" style="margin-top:8px">The live NAV refreshes daily; the breadth panel and the strategy-equity backtest regenerate in the weekly run, so they trail by design (wider budgets). The headline model is extended to the live NAV date regardless of the backtest curves.</div>
+      <div class="card-note" style="margin-top:8px">The live NAV refreshes daily and is measured in NYSE sessions against the last completed session — a budget of zero, so one session behind reads STALE. The breadth panel and the strategy-equity backtest regenerate in the weekly run, so they trail by design and keep wider business-day budgets. The headline model is extended to the live NAV date regardless of the backtest curves.</div>
     </div>
     <div class="grid2">
       <div class="card">
