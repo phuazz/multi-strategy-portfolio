@@ -97,6 +97,24 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
 
     messages = []
 
+    # Name every feed that breaches or nears its budget. The banner renders
+    # this list verbatim, and an empty list once demoted a hard STALE to the
+    # generic "approaching its freshness budget" fallback (2026-08-25).
+    for f in feeds:
+        if f["level"] == "ok":
+            continue
+        lag, unit = f["bday_lag"], f["basis"]
+        if lag is None:
+            messages.append(f"{f['feed']}: as-of date missing.")
+        elif f["level"] == "stale":
+            messages.append(
+                f"{f['feed']} is {lag} {unit[:-1] if lag == 1 else unit} behind "
+                f"(as of {f['asOf']}; budget {f['budget_bdays']}).")
+        else:
+            messages.append(
+                f"{f['feed']} is approaching its freshness budget "
+                f"({lag} of {f['budget_bdays']} {unit}; as of {f['asOf']}).")
+
     # Consistency: current_state_since must equal the latest event date. A mismatch
     # is exactly how the stale-panel incident hid a regime change.
     events = overlay.get("events", [])

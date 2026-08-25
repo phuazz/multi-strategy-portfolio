@@ -413,7 +413,7 @@ function renderStaleBanner(){
   el.className='stale-banner '+(h.level==='stale'?'stale':'warn');
   el.style.display='flex';
   el.innerHTML = `<span>${h.level==='stale'?'✕':'⚠'}</span><span>${h.level==='stale'?'DATA INTEGRITY':'DATA CHECK'} — `+
-    esc(h.messages.join(' · ')||'a feed is approaching its freshness budget')+
+    esc(h.messages.join(' · ')||(h.level==='stale'?'stale or inconsistent data detected':'a feed is approaching its freshness budget'))+
     ` &nbsp;<a href="#" onclick="setTab('health');return false;">See Data Health →</a></span>`;
 }
 

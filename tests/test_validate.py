@@ -147,3 +147,33 @@ def test_live_nav_year_boundary():
                          dt.datetime(2027, 1, 4, 23, 55, tzinfo=dt.timezone.utc),
                          run_date=dt.date(2027, 1, 4))
     assert behind["bday_lag"] == 1 and behind["level"] == "stale"
+
+
+# --- a breached feed must be named in messages ------------------------------
+
+def test_stale_feed_named_in_messages():
+    """The 2026-08-25 banner regression: live_track was a hard STALE, but with
+    messages empty the page fell back to 'a feed is approaching its freshness
+    budget'. A breached feed must be named, with lag, basis and as-of date."""
+    h = validate.run(_bundle(price_asof="2026-08-20"), REG, dt.date(2026, 8, 21),
+                     _OK_STATS, bench_ok=True, bench_note="ok",
+                     now_utc=dt.datetime(2026, 8, 21, 23, 55, tzinfo=dt.timezone.utc))
+    assert h["level"] == "stale"
+    assert any("live_track" in m and "1 NYSE session behind" in m
+               and "2026-08-20" in m for m in h["messages"])
+
+
+def test_warn_feed_message_says_approaching():
+    # Panel 7 business days old against a budget of 8: inside the approach band.
+    h = validate.run(_bundle(panel_end="2026-06-11"), REG, RUN, _OK_STATS,
+                     bench_ok=True, bench_note="ok", now_utc=NOW)
+    assert h["level"] == "warn"
+    assert any("risk_overlay" in m and "approaching" in m for m in h["messages"])
+
+
+def test_fresh_feeds_produce_no_messages():
+    # The banner only renders when there is something to say; a healthy build
+    # must not accumulate noise.
+    h = validate.run(_bundle(), REG, RUN, _OK_STATS, bench_ok=True, bench_note="ok",
+                     now_utc=NOW)
+    assert h["messages"] == []
