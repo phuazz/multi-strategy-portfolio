@@ -1,0 +1,93 @@
+name: Emit state contract
+
+# Publishes docs/data/state.json — this monitor's data health, in the shape a
+# private consumer (the command centre) reads it in.
+#
+# WHY THIS EXISTS. That consumer used to reach INTO this repo for exact JSON
+# pointers in the baked portfolio JSON from its own side. It works, and it is
+# guarded there, but it leaves knowledge of THIS repo's field names living in
+# somebody else's codebase: rename a key here and the break surfaces over there,
+# days later, in a file nobody was editing at the time.
+#
+# WHY A SEPARATE WORKFLOW, NOT A STEP IN daily_monitor.yml. That workflow gates
+# its publish on the test suite, so a step added there can hold up the monitor.
+# Nothing in this repo reads docs/data/state.json, so it must never be able to
+# do that, and a separate workflow cannot, whatever it does.
+#
+# ONLY HEALTH IS EMITTED, NOT THE REGIME. This monitor is a display layer that
+# sits one fetch behind the engine by design, so during an engine-side revision
+# the two legitimately disagree — and the consumer's contract is explicit that
+# the engine is primary and that this repo's row records only its own health and
+# as-of. Emitting a regime state from here would put a second, staler answer to
+# the same question into circulation wearing equal authority.
+#
+# GUARD (CLAUDE.md: no unattended run without one). emit_state.py hard-asserts
+# every pointer and the health vocabulary, refuses a non-integer feed lag rather
+# than sorting around it, and REFUSES to write on any failure, leaving the
+# previous emission intact. tests/test_emit_state.py runs in the shared suite —
+# so unlike two of the sibling emitters, this one IS gated in CI — and covers
+# the regime exclusion explicitly. The consumer then validates the emission
+# against its own registry and reads it in SHADOW, rendering its own independent
+# extraction and reporting any field-level divergence.
+#
+# Nothing non-public is emitted; every value is copied from a file this repo
+# already commits publicly.
+
+on:
+  workflow_run:
+    workflows: ["Daily monitor refresh"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: emit-state-contract
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  emit:
+    # Only copy from a run that actually produced fresh inputs. After a failed
+    # refresh the previous emission stays, and the consumer's own staleness rule
+    # reports it — a stale emission is visible there, a wrong one is not.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # No dependencies by design: the emitter reads this repo's own JSON with
+      # the standard library only, so it cannot break on a vendor package the
+      # rest of the pipeline happens to pin.
+      - name: Emit the state contract
+        run: python scripts/emit_state.py
+
+      - name: Commit the emission
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "State Contract Emitter"
+          git add docs/data/state.json
+          if git diff --cached --quiet; then
+            echo "State unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "Emit state contract $(date -u +'%Y-%m-%d %H:%M') UTC"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected on attempt $attempt — rebasing onto origin/main."
+            git pull --rebase --autostash origin main || exit 1
+          done
+          echo "::error::Could not push the state emission after 3 attempts."
+          exit 1
