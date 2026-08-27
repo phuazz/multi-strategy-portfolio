@@ -143,7 +143,7 @@ def test_an_empty_feed_list_is_refused(store):
 
 # --- the state --------------------------------------------------------------
 
-@pytest.mark.parametrize("level,hint", [("ok", "none"), ("warn", "watch"), ("error", "watch")])
+@pytest.mark.parametrize("level,hint", [("ok", "none"), ("warn", "watch"), ("stale", "watch")])
 def test_the_level_is_copied_and_drives_the_hint(store, level, hint):
     store["d"] = _portfolio(level=level)
     s = emit_state.build()["signals"][SIGNAL]
@@ -151,9 +151,31 @@ def test_the_level_is_copied_and_drives_the_hint(store, level, hint):
     assert s["action_hint"] == hint
 
 
-def test_a_level_outside_the_frozen_vocabulary_is_refused(store):
+def test_the_vocabulary_matches_the_ladder_validate_py_declares(store):
+    """scripts/validate.py declares 'ok' < 'warn' < 'stale'. The consumer held a
+    different list until 2026-08-27 — it included an `error` level this monitor
+    cannot emit and omitted `stale`, which it can. The day the monitor first
+    went stale, that turned the row into a loud ERROR downstream. Pin the
+    vocabulary to the repo that produces it."""
+    assert emit_state.LEVELS == ("ok", "warn", "stale")
+
+
+def test_stale_is_accepted_rather_than_refused(store):
+    """The regression test for 2026-08-27: this exact value broke the consumer."""
+    store["d"] = _portfolio(level="stale")
+    assert emit_state.build()["signals"][SIGNAL]["state"] == "stale"
+
+
+def test_a_level_outside_the_declared_ladder_is_refused(store):
     store["d"] = _portfolio(level="degraded")
     with pytest.raises(emit_state.EmitError, match="degraded"):
+        emit_state.build()
+
+
+def test_error_is_not_a_level_this_monitor_emits(store):
+    """Kept explicit so nobody re-adds it from the consumer's old list."""
+    store["d"] = _portfolio(level="error")
+    with pytest.raises(emit_state.EmitError, match="error"):
         emit_state.build()
 
 

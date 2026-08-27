@@ -71,9 +71,17 @@ CONTRACT_VERSION = "1"
 SOURCE = "multi-strategy-portfolio"
 SIGNAL = "monitor_health"
 
-# The health vocabulary the consumer holds frozen. A level outside it is a
-# rejection there; catching it here names the file it came from.
-LEVELS = ("ok", "warn", "error")
+# The health ladder THIS repo declares, in scripts/validate.py: 'ok' < 'warn' <
+# 'stale'. Taken from the source of truth rather than from the consumer's copy.
+#
+# The consumer's copy was wrong in both directions until 2026-08-27 — it listed
+# an `error` level this monitor cannot emit, and omitted the `stale` level it
+# does. Nobody noticed for five weeks because the monitor had not gone stale in
+# that window; the day it did, the consumer's guard turned the row into a loud
+# ERROR. That is the guard working, but it is also why this list is copied from
+# validate.py and not from the consumer: a vocabulary belongs to the repo that
+# produces it.
+LEVELS = ("ok", "warn", "stale")
 
 
 class EmitError(Exception):
