@@ -101,6 +101,10 @@ a{color:var(--b-text);text-decoration:none}
 .kpi-label{font-size:11px;color:var(--t3-text);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;margin-bottom:5px}
 .kpi-val{font-size:21px;font-weight:700;letter-spacing:-0.5px;font-variant-numeric:tabular-nums;line-height:1.1}
 .kpi-sub{font-size:11px;color:var(--t3-text);margin-top:3px}
+/* Amber inline note inside a kpi sub-line. Used where a tile cannot measure what
+   it is for — a dead quote feed — so the reason carries the same weight as the
+   warn pills rather than sitting in the same grey as an ordinary caption. */
+.kpi-warn{color:var(--a-text);font-weight:600}
 
 /* P&L strip */
 /* Five tiles since the intraday figure split into US and Europe sessions.
@@ -291,7 +295,12 @@ function renderMasthead(){
     `<span class="pill pill-paper" title="Paper / model portfolio — not live capital">● Paper model</span>`,
     `<span class="pill pill-${onoff}" title="Breadth de-risk gate state">${rg.state==='RISK_ON'?'Risk-On':'Risk-Off'}</span>`,
     `<span class="pill" title="Latest model NAV date">As of ${fmtDateShort(m.live_asOf||m.asOf)}</span>`,
-    `<span class="pill pill-health-${hl}" title="Data-integrity status">${hl==='ok'?'✓ Data OK':hl==='warn'?'⚠ Check data':'✕ Stale'}</span>`,
+    // Scoped deliberately. This pill grades the BAKED dataset — feed freshness,
+    // regime since-date, recomputed statistics — and knows nothing about the
+    // live quote transport, which can be dead while the bake is perfect. A
+    // reader who takes "Data OK" as covering the whole page would take it as a
+    // freshness claim the pill is in no position to make, so it says which.
+    `<span class="pill pill-health-${hl}" title="Integrity of the baked daily dataset. It does not cover the live quote feed — the intraday session tiles report that separately.">${hl==='ok'?'✓ Data OK':hl==='warn'?'⚠ Check data':'✕ Stale'}</span>`,
   ].join('');
 }
 
@@ -709,8 +718,72 @@ function renderPnlStrip(elId){
 }
 
 /* ---- live intraday (mirrors Portfolio Command Centre: Yahoo chart API via CORS proxy) ---- */
-const PROXIES = [ u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`, u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` ];
+
+/* Quote transport. Yahoo's chart endpoint sends no Access-Control-Allow-Origin
+   header, so this page has always reached it through a public CORS proxy. That
+   market has closed. Measured from this origin (https://phuazz.github.io):
+
+     2026-08-28  corsproxy.io  HTTP 401 "A valid API key is required"
+                 allorigins    TypeError: Failed to fetch (no ACAO header)
+                 six others probed — codetabs, thingproxy, cors.lol,
+                 cors.workers.dev, allorigins /get, whateverorigin — none served
+                 the Yahoo payload.
+     2026-08-29  corsproxy.io  HTTP 401, in 76ms
+                 allorigins    0 of 6 concurrent cache-busted requests returned
+                               inside 6s; every one timed out. A repeat of a URL
+                               already in its edge cache DID return in 23ms, so
+                               it is not dead so much as unusable: it serves
+                               cached copies of unknown age and hangs on the rest.
+
+   Buying a corsproxy.io key does not rescue this. The repository is public and
+   the page is entirely client-side, so a key shipped here is a published key.
+
+   QUOTE_PROXY is therefore a self-hosted Cloudflare Worker, bounded by an
+   upstream host allowlist so it cannot act as an open relay. It is shared with
+   the Portfolio Command Centre and the COPX trade plan, which sit on this same
+   origin and are already inside its ALLOWED_ORIGINS — one deployment serves all
+   three. The source and deployment notes are deliberately kept in ONE place
+   rather than copied into three repositories where they would drift:
+
+     https://github.com/phuazz/Portfolio-Command-Centre/blob/main/scripts/quote-proxy-worker.js
+
+   Set this to the deployed workers.dev URL, no trailing path. Left empty, live
+   quotes are simply unavailable — and the card below then says so instead of
+   showing a number, which is the entire point of the freshness guard. */
+const QUOTE_PROXY = '';
+
+/* The withdrawn public proxies stay as a trailing fallback only, so the page
+   self-heals if either restores anonymous access. Neither is the intended path,
+   and neither may be trusted to fail quickly — see FETCH_TIMEOUT_MS. */
+const PROXIES = [
+  ...(QUOTE_PROXY ? [u=>`${QUOTE_PROXY.replace(/\/+$/,'')}/?url=${encodeURIComponent(u)}`] : []),
+  u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+];
+
+/* A dead proxy that answers is cheap; a dead proxy that hangs is not. This fetch
+   carried no timeout, and on 2026-08-29 allorigins accepted the connection and
+   never replied. Measured on the live page: the two intraday tiles sat on
+   "fetching live quotes…" for over three minutes before falling through to the
+   honest empty state, so the window in which the card was silently wrong was
+   not the outage — it was the three minutes of pulsing dots that looked like
+   work in progress. 6s is generous against a proxy that answers in 76ms. */
+const FETCH_TIMEOUT_MS = 6000;
+
+/* Transport telemetry for the freshness guard, reset at the head of every poll.
+   The three outcomes are kept apart because they need different words on the
+   tile: `ok` is a quote that arrived and parsed, `dead` is a transport that did
+   not answer at all, and `noData` is a transport that answered with a payload
+   this page could not use — a delisted symbol, or a prior close that could not
+   be established. Only `dead` means the feed is down; collapsing the three into
+   one "unavailable" is what makes an outage read like a thin-symbol problem. */
+let _fetchStat = { ok:0, dead:0, noData:0 };
+
 let _intraTimer=null;
+/* Re-entrancy guard. The poll fires every 60s, and with a hung transport a call
+   outlived its own interval — overlapping polls each holding connections open
+   against the browser's six-per-host cap, so the queue never drained. */
+let _intraBusy=false;
 /* The prior close an intraday move is measured against.
 
    Yahoo's meta on this endpoint frequently omits regularMarketPreviousClose,
@@ -745,13 +818,25 @@ function _priorClose(res, m){
 }
 async function _yfQuote(sym){
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&_cb=${Date.now()}`;
+  // Set once a proxy returns a body this page could parse. It separates "the
+  // transport is down" from "the transport works and Yahoo has nothing usable
+  // for this symbol", which the tile has to tell apart to say anything true.
+  let transportOk=false;
   for(const p of PROXIES){
-    try{ const r=await fetch(p(url),{cache:'no-store'}); if(!r.ok) continue; const j=await r.json();
-      const res=j&&j.chart&&j.chart.result&&j.chart.result[0]; const m=res&&res.meta; if(!m) continue;
+    try{
+      const r=await fetch(p(url),{cache:'no-store',signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)});
+      if(!r.ok) continue;                                  // this proxy failed; try the next
+      const j=await r.json();
+      transportOk=true;
+      const res=j&&j.chart&&j.chart.result&&j.chart.result[0]; const m=res&&res.meta; if(!m) break;
       const price=m.regularMarketPrice, prev=_priorClose(res,m);
-      if(isNum(price)&&isNum(prev)&&prev) return {ret:price/prev-1, t:m.regularMarketTime};
+      if(isNum(price)&&isNum(prev)&&prev){ _fetchStat.ok++; return {ret:price/prev-1, t:m.regularMarketTime}; }
+      // A parsed payload without a usable price is Yahoo's answer, not the
+      // proxy's. Asking a second proxy for the same URL returns the same thing.
+      break;
     }catch(e){}
   }
+  if(transportOk) _fetchStat.noData++; else _fetchStat.dead++;
   return null;
 }
 async function _pool(items, fn, n=5){
@@ -823,10 +908,26 @@ function venueOf(sym){
 }
 async function refreshIntraday(){
   if(!document.getElementById('ov-us')){ if(_intraTimer){clearInterval(_intraTimer);_intraTimer=null;} return; }  // left Overview
+  if(_intraBusy) return;                                     // a slow poll is still running
+  _intraBusy=true;
+  try{ await _refreshIntradayInner(); } finally { _intraBusy=false; }
+}
+async function _refreshIntradayInner(){
+  _fetchStat={ok:0, dead:0, noData:0};                        // this poll only
   const rows=DS.weights.rows.filter(r=>(r.weight||0)>1e-4);
   const quotes=await _pool(rows, r=>_yfQuote(r.tradeAs||r.ticker), 5);
   const spyQ=await _yfQuote('SPY');
   if(!document.getElementById('val-us')) return;              // tab switched mid-fetch
+
+  /* The freshness guard. `feedDown` is true only when every attempt failed at
+     the transport — not when the quotes arrived and said the market is shut.
+     The distinction is the whole point: "Closed" is a fact about the calendar
+     that the page is entitled to state, whereas a dead transport leaves it
+     entitled to state nothing at all, and the two must not share a caption. */
+  const feedDown = _fetchStat.ok===0 && _fetchStat.dead>0;
+  const feedPartial = _fetchStat.ok>0 && _fetchStat.dead>0;
+  const bakedTo = fmtDateShort(DS.meta.live_asOf||DS.meta.asOf);
+  const feedNote = feedPartial ? ` · <span class="kpi-warn">${_fetchStat.dead} quote${_fetchStat.dead===1?'':'s'} missing</span>` : '';
 
   const nowS=Date.now()/1000, ageMinOf=q=>(q&&isNum(q.t))?(nowS-q.t)/60:Infinity;
   const agg={};                                               // per venue, plus 'other'
@@ -853,8 +954,13 @@ async function refreshIntraday(){
       subEl.textContent='not held'; if(dot) dot.className='livedot off'; continue;
     }
     if(b.anyW<0.01){
+      // Nothing to measure. Say WHY, and name the vintage the reader is
+      // actually looking at, so an outage cannot be mistaken for a quiet tape.
       valEl.textContent='—'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
-      subEl.textContent='live quotes unavailable'; if(dot) dot.className='livedot off'; continue;
+      subEl.innerHTML = feedDown
+        ? `<span class="kpi-warn">quote feed down</span> · baked to ${bakedTo} · see 1-Day`
+        : `no usable quotes for this sleeve · baked to ${bakedTo} · see 1-Day`;
+      if(dot) dot.className='livedot off'; continue;
     }
     // Liveness is measured against this venue's OWN weight, not the whole book:
     // Xetra can never reach half of NAV, so a total-NAV gate would keep it dark.
@@ -868,14 +974,14 @@ async function refreshIntraday(){
         +(isNum(venueRet)?` moved ${pctSigned(venueRet,2)}`:'')
         +(isNum(ex)?` · vs SPY <span class="${signClass(ex)}">${pctSigned(ex,2)}</span>`:'')
         +` · live ${hhmm(b.tLive||b.tAny)}`
-        +(share<0.95?` · ${Math.round(share*100)}% quoting`:'')+residual;
+        +(share<0.95?` · ${Math.round(share*100)}% quoting`:'')+residual+feedNote;
     }else{
       if(dot) dot.className='livedot off';
       valEl.textContent='Closed'; valEl.className='kpi-val muted'; valEl.style.fontSize='17px';
       const qd=b.tAny? fmtDateShort(new Date(b.tAny*1000).toISOString().slice(0,10)) : '';
       subEl.innerHTML=`${Math.round(b.totW*100)}% of NAV`+(qd?` · quotes ${qd}`:'')
         +(b.liveW>0.005?` · only ${Math.round(share*100)}% quoting`:'')
-        +` · see 1-Day`+residual;
+        +` · see 1-Day`+residual+feedNote;
     }
   }
 }
@@ -1771,7 +1877,7 @@ function renderFooter(){
     `<strong>Multi-Strategy Portfolio</strong> — personal model-portfolio monitor. `+
     `This is a <strong>paper model portfolio</strong> for research and monitoring; it is not investment advice, an offer, or a record of actual trading. `+
     `Backtested results are hypothetical, partly in-sample, and net of an assumed ${m.cost_assumption_bps} bps switch cost only. Past performance does not guarantee future results.<br>`+
-    `Intraday P&L is fetched live from public quotes in your browser (via a CORS proxy) and may be delayed or briefly unavailable; every other figure comes from the baked daily dataset.<br>`+
+    `Intraday P&L is fetched live from public quotes in your browser (via a CORS proxy) and may be delayed or unavailable. When no quote arrives the two session tiles show a dash and say so — they never fall back to the last close and present it as today. Every other figure comes from the baked daily dataset and is unaffected.<br>`+
     `Source engine: <a href="https://github.com/${esc(m.source_repo)}" target="_blank" rel="noopener">${esc(m.source_repo)}</a> @ ${esc((m.source_commit||'—').slice(0,7))} · built ${esc(m.built_at_utc)} · data as of ${fmtDate(m.asOf)}.`;
 }
 
