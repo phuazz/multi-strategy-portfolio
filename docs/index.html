@@ -745,12 +745,12 @@ function renderPnlStrip(elId){
    three. The source and deployment notes are deliberately kept in ONE place
    rather than copied into three repositories where they would drift:
 
-     https://github.com/phuazz/Portfolio-Command-Centre/blob/main/scripts/quote-proxy-worker.js
+     https://github.com/phuazz/Portfolio-Command-Centre/blob/main/scripts/quote-proxy-worker.mjs
 
    Set this to the deployed workers.dev URL, no trailing path. Left empty, live
    quotes are simply unavailable — and the card below then says so instead of
    showing a number, which is the entire point of the freshness guard. */
-const QUOTE_PROXY = '';
+const QUOTE_PROXY = 'https://pcc-quote-proxy.phuaz.workers.dev';
 
 /* The withdrawn public proxies stay as a trailing fallback only, so the page
    self-heals if either restores anonymous access. Neither is the intended path,
