@@ -1,6 +1,6 @@
 """Build the monitor: fetch -> adapt -> compute -> validate -> write -> bake.
 
-Run:  python scripts/pipeline.py [--local PATH] [--no-benchmarks]
+Run:  python scripts/pipeline.py [--local PATH] [--no-benchmarks] [--no-benchmark-wait]
 
 Produces docs/data/portfolio-<id>.json (the client fetches this) and bakes
 template.html -> docs/index.html. The dataset is the contract; the HTML is a
@@ -22,14 +22,16 @@ import metrics  # noqa: E402
 import prices as prices_mod  # noqa: E402
 import validate  # noqa: E402
 import valuation  # noqa: E402
-from benchmarks import build_benchmarks  # noqa: E402
-from config import (ACTIVE_PORTFOLIO_IDS, DATA_DIR, DOCS_DATA_DIR, DOCS_INDEX,  # noqa: E402
+from benchmarks import build_benchmarks_awaiting_tail  # noqa: E402,F401
+from config import (ACTIVE_PORTFOLIO_IDS, BENCH_TAIL_WAIT_ATTEMPTS,  # noqa: E402
+                    BENCH_TAIL_WAIT_SECONDS, DATA_DIR, DOCS_DATA_DIR, DOCS_INDEX,
                     TEMPLATE, VALUATION_LAYER_ENABLED, dataset_path, load_registry)
 from sources import load_sources  # noqa: E402
 
 
 def build_dataset(portfolio_id: str, *, local: str | None = None,
-                  run_date: dt.date | None = None, use_benchmarks: bool = True) -> dict:
+                  run_date: dt.date | None = None, use_benchmarks: bool = True,
+                  bench_wait_attempts: int | None = None) -> dict:
     run_date = run_date or dt.datetime.now(dt.timezone.utc).date()
     reg = load_registry(portfolio_id)
     print(f"[{portfolio_id}] building (run_date={run_date})")
@@ -47,10 +49,17 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     # Benchmarks aligned to the deployed model's date axis. The S&P curve's
     # base is the engine's committed export (the series its email and
     # factsheet use), read from the same bundle; yfinance only extends it.
+    # The fetch waits, within a bounded budget, for a vendor tail that has not
+    # posted yet, so a NAV and a benchmark on different dates are not published
+    # together (2026-09-09; see benchmarks.py).
     model_dates = overlay["gated_variants"][reg["source"]["deployed_key"]]["dates"]
+    price_asof = (live.get("live_dates") or [None])[-1] or live.get("anchor_date")
     if use_benchmarks:
-        benchmarks, bench_ok, bench_note = build_benchmarks(
-            model_dates, reg, live.get("live_dates"), engine_files=bundle)
+        benchmarks, bench_ok, bench_note = build_benchmarks_awaiting_tail(
+            model_dates, reg, live.get("live_dates"), bundle, price_asof,
+            attempts=(BENCH_TAIL_WAIT_ATTEMPTS if bench_wait_attempts is None
+                      else bench_wait_attempts),
+            sleep_s=BENCH_TAIL_WAIT_SECONDS)
     else:
         benchmarks, bench_ok, bench_note = {}, False, "skipped (--no-benchmarks)"
     print(f"  benchmarks: ok={bench_ok} ({bench_note})")
@@ -199,11 +208,15 @@ def main() -> int:
     ap.add_argument("--local", default=None, help="path to a local breadth-thrust-etf checkout")
     ap.add_argument("--no-benchmarks", action="store_true", help="skip yfinance (fast offline build)")
     ap.add_argument("--portfolio", default=None, help="build only this portfolio id")
+    ap.add_argument("--no-benchmark-wait", action="store_true",
+                    help="do not wait for a vendor benchmark bar that has not posted yet "
+                         "(an ad-hoc run publishes nothing, so it should not sit waiting)")
     args = ap.parse_args()
 
     ids = [args.portfolio] if args.portfolio else ACTIVE_PORTFOLIO_IDS
     for pid in ids:
-        ds = build_dataset(pid, local=args.local, use_benchmarks=not args.no_benchmarks)
+        ds = build_dataset(pid, local=args.local, use_benchmarks=not args.no_benchmarks,
+                           bench_wait_attempts=0 if args.no_benchmark_wait else None)
         write_dataset(pid, ds)
     bake_template()
     print("done.")

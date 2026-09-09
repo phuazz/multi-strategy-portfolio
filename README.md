@@ -65,7 +65,15 @@ fetch received no Friday SPY bar, the old alignment carried Thursday's close ont
 date, and the page printed S&P YTD +13.1% against the model's Friday mark while the email
 said +12.7%. A benchmark now ends at its own last served close, carries `asOf`, and Data
 Health scores it in NYSE sessions behind the NAV (one behind = WARN, with the date caveat
-beside every S&P-relative figure). The model side was never the problem — its series was
+beside every S&P-relative figure). Ending the curve honestly removed the wrong number but
+not the mixed comparison, so since 2026-09-09 the build also WAITS for the vendor tail: the
+cron clears the engine's publish tail but lands inside the market-data vendor's, and on
+2026-09-08 yfinance posted the session's bar between 01:30 and 02:03 UTC — after the build,
+which published a 2026-09-08 NAV against a 2026-09-04 benchmark and warned by email. The
+fetch now retries while the benchmark trails the NAV, four times at six minutes
+(`MSP_BENCH_TAIL_ATTEMPTS` / `MSP_BENCH_TAIL_SLEEP_S`, `--no-benchmark-wait` for an ad-hoc
+run). It is fail-open: attempts exhausted, the page publishes with the warn as before. The
+model side was never the problem — its series was
 byte-identical to the engine's — but the engine restates the deployed history in its
 weekend run, so the Sunday build below keeps the page on the same vintage as the email.
 

@@ -25,6 +25,8 @@ strategy. Context is Personal (own book), not Navigo or CGSI. Renamed from navig
   curve; yfinance only chains returns after its last date, and no benchmark is ever
   forward-filled onto a date it has no bar for (2026-09-05: a withheld Friday bar printed S&P
   YTD +13.1% against the email's +12.7%). Reconcile the page to the email, never the reverse.
+  The build also waits, within a bounded budget, for a vendor bar that has not posted yet
+  (2026-09-09), so a NAV and a benchmark on different dates are not published together.
 
 ## Build
 

@@ -31,11 +31,27 @@ Robustness: a yfinance failure must NOT kill the build. We return ok=False and
 the dashboard renders model-only with a flagged, missing benchmark feed. An
 engine-type benchmark whose export is absent from the bundle falls back to
 yfinance for its whole history and says so in ``source``.
+
+Tail WAIT, from the 2026-09-09 build: ending at the last served close removed
+the wrong number but not the mixed comparison. The vendor posts the day's US
+bar at an unpredictable point after the close, and this repo's 23:40 UTC cron
+lands 00:40-01:30 UTC (20:40-21:30 ET) — inside that window. On 2026-09-08 the
+bar arrived between 01:30 and 02:03 UTC, so the build baked a 2026-09-08 NAV
+against a 2026-09-04 benchmark, emailed the warn and stayed that way until the
+operator re-ran it by hand. ``build_benchmarks_awaiting_tail`` therefore
+re-fetches while the benchmark trails the NAV, so the mixed basis is not
+published in the first place. It is fail-open: attempts exhausted, the build
+publishes with the warn exactly as before.
 """
 from __future__ import annotations
 
+import datetime as dt
+import time
+
 import numpy as np
 import pandas as pd
+
+from nyse_sessions import sessions_behind
 
 try:
     import yfinance as yf
@@ -238,3 +254,58 @@ def build_benchmarks(model_dates: list[str], registry: dict,
     if notes:
         note += "; " + "; ".join(notes)
     return out, True, note
+
+
+# --- tail wait -------------------------------------------------------------
+def engine_bench_lag(built: dict, registry: dict, price_asof: str | None) -> int:
+    """NYSE sessions the engine-type benchmark trails the live NAV by.
+
+    Deliberately the same measure ``validate.run`` rows on Data Health, so the
+    wait below fires on exactly the condition that would otherwise print a warn.
+    Zero when there is no engine-type benchmark, no built curve, or no NAV date
+    to judge against — a portfolio without one simply does not wait. The other
+    US curves come from the same yfinance batch, so the S&P is a sufficient
+    trigger for all of them; a foreign-market curve (the STI runs a session
+    ahead) must not trigger a wait and does not.
+    """
+    if not price_asof:
+        return 0
+    nav = dt.date.fromisoformat(price_asof[:10])
+    lags = [sessions_behind(dt.date.fromisoformat(bm["asOf"][:10]), nav)
+            for key, cfg in (registry.get("benchmarks") or {}).items()
+            if cfg.get("type") == "engine"
+            for bm in [(built or {}).get(key)] if bm and bm.get("asOf")]
+    return max(lags, default=0)
+
+
+def build_benchmarks_awaiting_tail(model_dates: list[str], registry: dict,
+                                   live_dates: list[str] | None,
+                                   engine_files: dict | None,
+                                   price_asof: str | None, *,
+                                   attempts: int = 0, sleep_s: int = 360,
+                                   builder=build_benchmarks,
+                                   sleep=time.sleep, log=print) -> tuple[dict, bool, str]:
+    """``build_benchmarks``, re-fetching while the benchmark trails the NAV.
+
+    ``attempts`` is the number of RETRIES after the first fetch, so attempts=0
+    is the old behaviour exactly. Stops early on a build that already matches
+    the NAV, and on a failed fetch (a vendor outage is the health gate's
+    finding, not something waiting will mend). The wait it actually spent rides
+    along on the note so the build log and Data Health say so.
+    """
+    waited = 0
+    for remaining in range(max(int(attempts), 0), -1, -1):
+        out, ok, note = builder(model_dates, registry, live_dates, engine_files)
+        lag = engine_bench_lag(out, registry, price_asof)
+        if not ok or lag <= 0 or remaining == 0:
+            break
+        log(f"  benchmark trails the NAV by {lag} NYSE session"
+            f"{'' if lag == 1 else 's'} (NAV {price_asof}); the vendor bar is not "
+            f"posted yet — waiting {sleep_s}s, {remaining} attempt"
+            f"{'' if remaining == 1 else 's'} left")
+        sleep(sleep_s)
+        waited += sleep_s
+    if waited:
+        note += (f"; waited {waited // 60}m for the vendor tail"
+                 + ("" if lag <= 0 else f", still {lag} session(s) short"))
+    return out, ok, note

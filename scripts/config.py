@@ -40,6 +40,20 @@ VALUATION_LAYER_ENABLED = (
     in ("1", "true", "yes", "on")
 )
 
+# Benchmark tail wait (2026-09-09). yfinance posts the day's US daily bar at an
+# unpredictable point after the close, and the 23:40 UTC cron lands 00:40-01:30
+# UTC (20:40-21:30 ET) — inside that window. On 2026-09-08 the bar arrived
+# between 01:30 and 02:03 UTC: the build baked a 2026-09-08 NAV against a
+# 2026-09-04 benchmark, warned by email, and every S&P-relative figure on the
+# page mixed dates until the operator re-ran the workflow by hand. The build now
+# re-fetches while the benchmark trails the NAV rather than publishing the mixed
+# basis and correcting it afterwards. Four retries at six minutes is a 24-minute
+# ceiling, which covers the observed gap with room; the workflow timeout is set
+# above it. Fail-open by construction: attempts exhausted, the build publishes
+# with the warn exactly as it did before.
+BENCH_TAIL_WAIT_ATTEMPTS = int(os.environ.get("MSP_BENCH_TAIL_ATTEMPTS", "4"))
+BENCH_TAIL_WAIT_SECONDS = int(os.environ.get("MSP_BENCH_TAIL_SLEEP_S", "360"))
+
 
 def load_registry(portfolio_id: str) -> dict:
     """Return the parsed portfolio registry for the given id."""

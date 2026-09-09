@@ -174,3 +174,107 @@ def test_engine_series_rejects_empty_or_hollow_exports():
                            "closes": [102.0, np.nan, 101.0]})
     assert list(s.index.strftime("%Y-%m-%d")) == ["2026-09-01", "2026-09-02"]
     assert list(s.values) == [101.0, 102.0]
+
+
+# --- tail wait (2026-09-09) ------------------------------------------------
+# The 2026-09-08 build fetched at 01:30 UTC, before the vendor posted that
+# session's US bar (it appeared by 02:03), and published a 2026-09-08 NAV
+# against a 2026-09-04 benchmark. The fetch now waits inside a bounded budget
+# rather than publishing the mixed basis. Python datetime months are 1-indexed.
+WAIT_REG = {"benchmarks": {"SPY": {"label": "S&P 500", "type": "engine", "ticker": "SPY",
+                                   "file": "benchmark_spy.json", "default": True},
+                           "STI": {"label": "STI", "type": "yfinance", "ticker": "^STI"}}}
+
+
+def _built(spy_asof, sti_asof="2026-09-09"):
+    return {"SPY": {"asOf": spy_asof}, "STI": {"asOf": sti_asof}}
+
+
+def _builder(asofs):
+    """A fetch that returns the next as-of each time it is called."""
+    seq, calls = list(asofs), []
+
+    def build(model_dates, registry, live_dates, engine_files):
+        calls.append(1)
+        return _built(seq[min(len(calls) - 1, len(seq) - 1)]), True, "ok"
+    build.calls = calls
+    return build
+
+
+def test_engine_bench_lag_measures_only_the_engine_curve():
+    # 2026-09-07 is Labor Day, so 09-04 -> 09-08 is ONE session, not two.
+    assert bmk.engine_bench_lag(_built("2026-09-04"), WAIT_REG, "2026-09-08") == 1
+    assert bmk.engine_bench_lag(_built("2026-09-08"), WAIT_REG, "2026-09-08") == 0
+    # A foreign-market curve running a session AHEAD must not trigger a wait.
+    assert bmk.engine_bench_lag(_built("2026-09-08", "2026-09-04"), WAIT_REG, "2026-09-08") == 0
+    # Nothing to judge against, or no engine benchmark: no wait.
+    assert bmk.engine_bench_lag(_built("2026-09-04"), WAIT_REG, None) == 0
+    assert bmk.engine_bench_lag(_built("2026-09-04"), {"benchmarks": {}}, "2026-09-08") == 0
+
+
+def test_wait_stops_as_soon_as_the_vendor_bar_lands():
+    slept, build = [], _builder(["2026-09-04", "2026-09-04", "2026-09-08"])
+    out, ok, note = bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08",
+        attempts=4, sleep_s=360, builder=build, sleep=slept.append, log=lambda *_: None)
+    assert ok and out["SPY"]["asOf"] == "2026-09-08"
+    assert len(build.calls) == 3 and slept == [360, 360]
+    assert "waited 12m for the vendor tail" in note and "short" not in note
+
+
+def test_wait_is_fail_open_when_the_bar_never_lands():
+    slept, build = [], _builder(["2026-09-04"])
+    out, ok, note = bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08",
+        attempts=2, sleep_s=60, builder=build, sleep=slept.append, log=lambda *_: None)
+    # Publishes anyway, with the short tail intact for the health gate to row.
+    assert ok and out["SPY"]["asOf"] == "2026-09-04"
+    assert len(build.calls) == 3 and slept == [60, 60]
+    assert "still 1 session(s) short" in note
+
+
+def test_a_fresh_build_never_waits_and_attempts_zero_is_the_old_behaviour():
+    slept, build = [], _builder(["2026-09-08"])
+    _, _, note = bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08",
+        attempts=4, sleep_s=360, builder=build, sleep=slept.append, log=lambda *_: None)
+    assert len(build.calls) == 1 and slept == [] and note == "ok"
+
+    slept, build = [], _builder(["2026-09-04"])
+    bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08",
+        attempts=0, sleep_s=360, builder=build, sleep=slept.append, log=lambda *_: None)
+    assert len(build.calls) == 1 and slept == []
+
+
+def test_a_failed_fetch_is_not_something_waiting_can_mend():
+    slept, calls = [], []
+
+    def build(*_a):
+        calls.append(1)
+        return {}, False, "yfinance fetch failed: boom"
+    out, ok, note = bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08",
+        attempts=4, sleep_s=360, builder=build, sleep=slept.append, log=lambda *_: None)
+    assert not ok and len(calls) == 1 and slept == [] and "boom" in note
+
+
+def test_wait_crosses_a_year_boundary_on_the_true_session_calendar():
+    # 2027-01-01 is a New Year holiday: 2026-12-31 -> 2027-01-04 is one session.
+    assert bmk.engine_bench_lag(_built("2026-12-31"), WAIT_REG, "2027-01-04") == 1
+    assert bmk.engine_bench_lag(_built("2027-01-04"), WAIT_REG, "2027-01-04") == 0
+    # Month boundary: 2026-09-30 -> 2026-10-01 is one session.
+    assert bmk.engine_bench_lag(_built("2026-09-30"), WAIT_REG, "2026-10-01") == 1
+
+
+def test_the_wait_ceiling_stays_below_the_workflow_timeout():
+    """A wait longer than the job's timeout would convert an intermittent warn
+    into an intermittent FAIL — the one outcome worse than the mixed basis."""
+    import re
+
+    from config import BENCH_TAIL_WAIT_ATTEMPTS, BENCH_TAIL_WAIT_SECONDS
+    wf = (ROOT / ".github" / "workflows" / "daily_monitor.yml").read_text(encoding="utf-8")
+    timeout_s = int(re.search(r"^\s*timeout-minutes:\s*(\d+)", wf, re.M).group(1)) * 60
+    ceiling = BENCH_TAIL_WAIT_ATTEMPTS * BENCH_TAIL_WAIT_SECONDS
+    assert ceiling + 600 <= timeout_s, (
+        f"wait ceiling {ceiling}s + 10m of build leaves no room in a {timeout_s}s timeout")

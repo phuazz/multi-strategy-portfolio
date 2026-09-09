@@ -20,6 +20,12 @@ name: Daily monitor refresh
 # engine's Sunday 01:00 UTC scheduled run and the factsheet send that
 # follows it; the same cron-delay tail applies.
 #
+# The cron clears the ENGINE's publish tail but lands inside the market-data
+# VENDOR's: yfinance posted the 2026-09-08 US bar between 01:30 and 02:03 UTC,
+# after that night's build, which then published a 2026-09-08 NAV against a
+# 2026-09-04 benchmark. The build step waits for that tail instead of moving the
+# cron later and delaying every healthy day by an hour (see benchmarks.py).
+#
 # What it does NOT do: re-run the strategy. The monitor is a read-only consumer
 # of the engine's published outputs.
 
@@ -39,7 +45,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 40, not 10 (2026-09-09). The build step now waits up to 24 minutes for a
+    # vendor benchmark bar that has not posted yet (config.BENCH_TAIL_WAIT_*),
+    # rather than publishing a NAV and a benchmark on different dates. The
+    # timeout must sit above that ceiling or the wait would turn an intermittent
+    # warn into an intermittent FAIL. On a healthy day nothing waits and the job
+    # still finishes inside a minute.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
