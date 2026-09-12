@@ -260,7 +260,13 @@ function baseLayout(extra){
   return Object.assign({
     margin:{t:12,b:38,l:54,r:18}, paper_bgcolor:'transparent', plot_bgcolor:'transparent',
     font:PLOT_FONT, hovermode:'x unified', showlegend:false,
-    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false},
+    // Hover is "x unified", so the session is named ONCE by this hoverformat
+    // and each trace row carries only its value. Never put %{x} back into a
+    // hovertemplate here: unified mode collapses the <br> and the row reads
+    // "13 Aug 2026Model 17.9%", date run into the number.
+    // NOTE the merge below is SHALLOW — an `extra.xaxis` replaces this whole
+    // object, so any call site passing its own xaxis must repeat hoverformat.
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false,hoverformat:'%d %b %Y'},
     yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:false},
   }, extra||{});
 }
@@ -473,23 +479,23 @@ function buildEquityChart(elId, opt){
   const traces=[];
   traces.push({type:'scatter',mode:'lines',name:'Model',x:dates,y:model.map((v,i)=> i<i0?null:cum(v,base)),
     line:{color:'rgba(26,135,84,0.95)',width:2.2}, fill:log?'none':'tozeroy', fillcolor:'rgba(26,135,84,0.06)',
-    hovertemplate:'%{x|%-d %b %Y}<br><b>Model</b> %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
+    hovertemplate:'<b>Model</b> %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
   if(eq.live && opt.showLive!==false){
     const lx=[eq.live.anchor_date].concat(eq.live.dates);
     const ly=[eq.live.anchor_equity].concat(eq.live.equity).map(v=>cum(v,base));
     traces.push({type:'scatter',mode:'lines+markers',name:'Live (MTM)',x:lx,y:ly,
       line:{color:'rgba(26,135,84,0.95)',width:2,dash:'dot'},marker:{size:5},
-      hovertemplate:'%{x|%-d %b %Y}<br><b>Live MTM</b> %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
+      hovertemplate:'<b>Live MTM</b> %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
   }
   if(opt.showBenchmarks!==false){
     (state.benchmarks||['SPY']).forEach(k=>{ const bm=eq.benchmarks[k]; if(!bm) return;
       let i0b=bm.dates.findIndex(d=> d>=startDate); if(i0b<0) i0b=0; const bbase=bm.equity[i0b];
       traces.push({type:'scatter',mode:'lines',name:bm.label||k,x:bm.dates,y:bm.equity.map((v,i)=> i<i0b?null:cum(v,bbase)),line:{color:bm.color||'#8a8a82',width:1.3},
-        hovertemplate:'%{x|%-d %b %Y}<br>'+(bm.label||k)+' %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
+        hovertemplate:(bm.label||k)+' %{y:.1f}'+(log?'×':'%')+'<extra></extra>'});
     });
   }
   const layoutExtra={ showlegend:true, legend:{orientation:'h',x:0,y:1.09,font:{size:11}},
-    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false,range:[startDate,endDate]},
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},zeroline:false,range:[startDate,endDate],hoverformat:'%d %b %Y'},
     yaxis:{gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},ticksuffix:log?'×':'%',zeroline:!log,zerolinecolor:'#cfcdc4'} };
   if(log) layoutExtra.yaxis.type='log';
   if(opt.showDrawdown){
@@ -1093,10 +1099,10 @@ function buildAllocHistory(){
   }
   const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>(v||0)*100),
     stackgroup:'one',line:{width:0.4,color:typeof s.color==='string'&&s.color.startsWith('rgba')?s.color:s.color},fillcolor:s.color,
-    hovertemplate:'%{x|%-d %b %y}<br>'+esc(s.name)+' %{y:.1f}%<extra></extra>'}));
+    hovertemplate:esc(s.name)+' %{y:.1f}%<extra></extra>'}));
   plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:11}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
     yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},range:[0,100]},
-    xaxis:{gridcolor:'#ededea',tickfont:{size:11},range:[xd[0],xd[xd.length-1]]}}));
+    xaxis:{gridcolor:'#ededea',tickfont:{size:11},range:[xd[0],xd[xd.length-1]],hoverformat:'%d %b %Y'}}));
   if(el.removeAllListeners) el.removeAllListeners('plotly_click');
   if(el.on) el.on('plotly_click', ev=>{ if(ev&&ev.points&&ev.points.length) showAllocAt(String(ev.points[0].x).slice(0,10)); });
 }
@@ -1178,7 +1184,7 @@ function holdingPanelHTML(t){
 function buildHoldingChart(t){
   const h=DS.holdings_prices[t];
   const traces=[
-    {type:'scatter',mode:'lines',name:'Close',x:h.dates,y:h.close,line:{color:'#1a1a18',width:1.7},hovertemplate:'%{x|%-d %b %y}<br>Close %{y}<extra></extra>'},
+    {type:'scatter',mode:'lines',name:'Close',x:h.dates,y:h.close,line:{color:'#1a1a18',width:1.7},hovertemplate:'Close %{y}<extra></extra>'},
     {type:'scatter',mode:'lines',name:'50-MA',x:h.dates,y:h.ma50,line:{color:'#b45309',width:1.3},hovertemplate:'50-MA %{y}<extra></extra>'},
     {type:'scatter',mode:'lines',name:'200-MA',x:h.dates,y:h.ma200,line:{color:'#be185d',width:1.3,dash:'dot'},hovertemplate:'200-MA %{y}<extra></extra>'},
   ];
@@ -1308,7 +1314,7 @@ function buildRolling(){
   plot(document.getElementById('perfRolling'),[
     {type:'scatter',mode:'lines',name:'Relative (model−S&P)',x:mr.x,y:rel,yaxis:'y2',
       line:{width:0},fill:'tozeroy',fillcolor:'rgba(37,99,235,0.13)',hovertemplate:'rel %{y:.0f}%<extra></extra>'},
-    {type:'scatter',mode:'lines',name:'Model 12m',x:mr.x,y:mr.ret.map(v=>v*100),line:{color:'#1a8754',width:1.6},hovertemplate:'%{x|%b %Y}<br>model %{y:.0f}%<extra></extra>'},
+    {type:'scatter',mode:'lines',name:'Model 12m',x:mr.x,y:mr.ret.map(v=>v*100),line:{color:'#1a8754',width:1.6},hovertemplate:'model %{y:.0f}%<extra></extra>'},
     {type:'scatter',mode:'lines',name:'S&P 12m',x:sr.x,y:sr.ret.map(v=>v==null?null:v*100),line:{color:'#8a8a82',width:1.4},hovertemplate:'S&P %{y:.0f}%<extra></extra>'},
   ], baseLayout({showlegend:true,legend:{orientation:'h',x:0,y:1.12,font:{size:11}},
     yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},
@@ -1316,7 +1322,7 @@ function buildRolling(){
 }
 function buildUnderwater(){
   const eq=DS.equity; let peak=-Infinity; const dd=eq.model.map(v=>{ peak=Math.max(peak,v); return (v/peak-1)*100; });
-  plot(document.getElementById('perfDD'),[{type:'scatter',mode:'lines',x:eq.dates,y:dd,line:{color:'rgba(192,57,43,0.6)',width:1},fill:'tozeroy',fillcolor:'rgba(192,57,43,0.12)',hovertemplate:'%{x|%b %Y}<br>DD %{y:.1f}%<extra></extra>'}],
+  plot(document.getElementById('perfDD'),[{type:'scatter',mode:'lines',x:eq.dates,y:dd,line:{color:'rgba(192,57,43,0.6)',width:1},fill:'tozeroy',fillcolor:'rgba(192,57,43,0.12)',hovertemplate:'DD %{y:.1f}%<extra></extra>'}],
     baseLayout({yaxis:{gridcolor:'#ededea',ticksuffix:'%',tickfont:{size:11,family:'JetBrains Mono'},rangemode:'tozero'}}));
 }
 function buildPerfStats(){
@@ -1658,8 +1664,8 @@ function renderTrades(){
     </div>`:''}`;
   const wk=(t.weekly&&t.weekly.length)?t.weekly:log.slice().reverse();   // full weekly series since inception
   plot(document.getElementById('trTurnover'),[{type:'bar',x:wk.map(e=>e.date),y:wk.map(e=>(e.turnover||0)*100),
-    marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'%{x|%-d %b %Y}<br>turnover %{y:.1f}%<extra></extra>'}],
-    baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:11}}}));
+    marker:{color:wk.map((e,i)=>i===0?'#b0b0a8':'#2563eb')},hovertemplate:'turnover %{y:.1f}%<extra></extra>'}],
+    baseLayout({margin:{t:8,b:34,l:42,r:12},yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},rangemode:'tozero'},xaxis:{tickfont:{size:11},hoverformat:'%d %b %Y'}}));
   if(_actions.length){ document.getElementById('actFilter').innerHTML=_actFilterChips(); renderActions(); }
   document.getElementById('blotFilter').innerHTML=_blotFilterChips();
   const bq=document.getElementById('blotQ'); if(bq) bq.value=state.blotQ||'';
