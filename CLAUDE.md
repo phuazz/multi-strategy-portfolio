@@ -20,6 +20,12 @@ strategy. Context is Personal (own book), not Navigo or CGSI. Renamed from navig
   source of portfolio config is `portfolios/<id>.json`.
 - **Dates via libraries only** — Python `datetime`/`dateutil` in the pipeline, `date-fns`-style
   care in the browser (`pct`/period anchors are computed in Python, which is unit-tested).
+- **The rebalance cadence is the engine's, and the label has one source.** Rank on Friday's
+  close, fill at Monday's close (WS18, 2026-08-22; the engine restated its whole history on
+  that cadence). The label lives in `portfolios/<id>.json` (`rebalance`) and the Methodology
+  and Trades surfaces read it from there. The Trades reconstruction dates each row on the
+  engine's own published fill dates, never on a calendar grid — a `W-FRI` grid dated every
+  Monday fill on the following Friday until 2026-09-19.
 - **The S&P 500 benchmark is the engine's series.** `data/benchmark_spy.json` (the engine's
   committed export, the series behind its weekly email and factsheet) is the base of the SPY
   curve; yfinance only chains returns after its last date, and no benchmark is ever

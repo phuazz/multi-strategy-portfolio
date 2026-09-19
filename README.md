@@ -107,15 +107,23 @@ the comparison is like-for-like), and any holding on a third calendar is reporte
 rather than dropped. When a venue is closed its tile says so; the 1-Day tile carries the last
 completed session for the whole book.
 
-**Execution convention.** A rebalance dated Friday is assumed **filled at that Friday's close**,
-not on the Monday. Each sleeve reads its signal at the session *before* the rebalance date
-(`prev_idx = closes.index.get_loc(rd) - 1`, normally Thursday), stamps the target weights on the
-Friday, and earns them through `weight_panel.shift(1)` against close-to-close returns. Because
-`shift(1)` on close-to-close returns makes the new Friday weight earn the Friday-close to
-Monday-close bar, the position must already exist at Friday's close — hence a Friday fill. The
-signal-to-fill gap is therefore one full session (Thursday close to Friday close), long enough to
-work a market-on-close order, and is not a weekend. The digest labels the rows
-"priced at Fri … close" and states that they are model weights, never executed trades.
+**Execution convention (W-MON since 2026-08-22).** The engine ranks on Friday's close and fills
+at Monday's close: `HEADLINE_FREQ = "W-MON"` in all four sleeves (WS18, engine commit `3718550`),
+with the whole history restated on that cadence. A rebalance dated Monday is assumed **filled at
+that Monday's close**. Each sleeve reads its signal at the session *before* the rebalance date
+(`prev_idx = closes.index.get_loc(rd) - 1`, normally Friday), stamps the target weights on the
+Monday, and earns them through `weight_panel.shift(1)` against close-to-close returns. Because
+`shift(1)` on close-to-close returns makes the new Monday weight earn the Monday-close to
+Tuesday-close bar, the position must already exist at Monday's close — hence a Monday fill. The
+signal-to-fill gap is one trading session (Friday close to Monday close), which spans the weekend
+in calendar time and is long enough to work a market-on-close order. A venue shut on the Monday
+fills at its next session, so a US holiday puts Xetra on the Monday and the US sleeves on the
+Tuesday; the Trades reconstruction dates every row on the engine's own published fill dates
+rather than on a calendar grid (the former `W-FRI` grid dated each Monday fill on the Friday
+after it once the history was restated). The digest labels the rows "priced at Mon … close" and
+states that they are model weights, never executed trades. The cadence label itself lives in
+`portfolios/<id>.json` (`rebalance`) and every rendered surface reads it from there. This
+supersedes the Thursday-signal / Friday-fill convention documented here until 2026-09-19.
 
 Overview also carries a **What changed** digest, windowed on the last rebalance rather than
 the last day — the model rebalances weekly, so a daily window would be empty most days. When
@@ -161,9 +169,10 @@ copies it to `docs/index.html` and writes the dataset to `docs/data/`. Never edi
 test → capture-integrity check → commit `docs/` → Pages. The cron sits past the engine's
 *measured* publish tail (its 21:30 UTC daily has landed as late as 23:18 UTC) rather than
 its scheduled time — fetching before the engine publishes would bake yesterday's data as
-latest inside the freshness budget, silently. Publishes follow the engine's cadence rule:
-every Friday after the US close even on US market holidays, using the latest populated
-close.
+latest inside the freshness budget, silently. Publishes follow the engine's cadence: under
+WS18 (2026-08-22) its weekly refresh runs over the weekend after ranking on Friday's close,
+and a post-fill refresh on Tuesday and Wednesday re-anchors onto Monday's fill; on a US
+market holiday it uses the latest populated close.
 
 **Ops alerting (2026-07-03)**: the daily workflow emails the operator (GMAIL_USER) on any
 failure, and on a capture warning (baked live as-of behind the NYSE calendar, or baked

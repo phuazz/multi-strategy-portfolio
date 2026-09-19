@@ -47,10 +47,13 @@ sync with `.github/workflows/*.yml`, `scripts/validate.py` and
   to GMAIL_USER. The GMAIL_USER / GMAIL_APP_PASSWORD repository secrets
   must exist — if `gh secret list` is empty, every alert channel is
   DARK and that is itself a FAIL finding.
-- Cadence rule (Zhenghao, 2026-07-03): publishes follow the engine —
-  every Friday after the US close even on US market holidays, using the
-  latest populated close. A Friday-holiday dashboard dated Thursday is
-  correct, not stale.
+- Cadence rule (Zhenghao, 2026-07-03): publishes follow the engine, even
+  on US market holidays, using the latest populated close. A Friday-holiday
+  dashboard dated Thursday is correct, not stale. The engine's weekly
+  cadence moved on 2026-08-22 (WS18): rank on Friday's close, fill at
+  Monday's close, with a weekend refresh and a Tuesday/Wednesday post-fill
+  refresh; "every Friday after the US close" in the original wording
+  described the cadence before that date.
 
 [TASK]
 Audit two things: (a) the DEPLOYED monitor shows the latest engine data

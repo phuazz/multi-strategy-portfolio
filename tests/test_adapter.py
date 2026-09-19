@@ -124,3 +124,54 @@ def test_tilt_off_drops_eem_and_restores_b_alloc():
     spy = next(r for r in w["rows"] if r["ticker"] == "SPY")
     b_leg = next(b for b in spy["build"] if b["sleeve"] == "B")
     assert abs(b_leg["alloc"] - 0.35) < 1e-9           # full 35% when tilt is off
+
+
+def test_weight_history_dates_are_the_engine_fill_dates_not_a_friday_grid():
+    """The engine moved from a Friday to a Monday fill on 2026-08-22 (WS18) and
+    restated its whole history, so every published rebalance date is a Monday,
+    or the next session when a venue is shut that Monday. The former W-FRI grid
+    dated each of those on the following Friday. The reconstruction must carry
+    the engine's own dates, whatever weekday they fall on.
+
+    Fixture dates are engine fill dates observed in the published histories and
+    verified here with the date library: a year boundary (Mon 2025-12-29 ->
+    Mon 2026-01-19), a split week in which Xetra fills on Mon 2026-01-19 and the
+    US sleeves on Tue 2026-01-20, and a month boundary (Tue 2026-01-20 ->
+    Mon 2026-02-02).
+    """
+    import datetime as _dt
+    # Python months are 1-indexed; weekdays come from the library, never by hand.
+    def wd(s): return _dt.date.fromisoformat(s).strftime("%a")
+    assert wd("2025-12-29") == "Mon" and wd("2026-01-19") == "Mon"
+    assert wd("2026-01-20") == "Tue" and wd("2026-02-02") == "Mon"
+
+    us = ["2025-12-29", "2026-01-20", "2026-02-02"]                  # A/B/C: the Tuesday of the split week
+    bundle = {
+        "topk_robustness.json": _th([{"date": d, "holdings": [{"etf": "SOXX", "weight": w}, {"etf": "IUES", "weight": 1 - w}]}
+                                     for d, w in zip(us, (0.5, 0.7, 0.4))]),
+        # Sleeve B's history starts a week before the others: that week has no
+        # four-sleeve book and must not appear.
+        "asset_class_rotation.json": _th([{"date": d, "holdings": [{"etf": "SPY", "weight": 1.0}]}
+                                          for d in ["2025-12-22"] + us]),
+        "thematic_rotation.json": _th([{"date": d, "holdings": [{"etf": "CIBR", "weight": 1.0}]} for d in us]),
+        "europe_rotation.json": _th([{"date": d, "holdings": [{"etf": h, "weight": 1.0}]}
+                                     for d, h in zip(["2025-12-29", "2026-01-19", "2026-02-02"], ("EXH1", "EXV1", "EXV1"))]),
+    }
+    overlay = {"gate_parameters": {"derisk_fraction": 0.5, "fallback_ticker": "SHY"},
+               "events": [], "phase22_eem_tilt": {"events": []}}
+    h = adapter.build_weight_history(bundle, REG, overlay)
+
+    dates = h["alloc_history"]["dates"]
+    assert dates == ["2025-12-29", "2026-01-19", "2026-01-20", "2026-02-02"]   # the engine's dates, in order
+    assert [e["date"] for e in h["weekly"]] == dates
+    assert all(wd(d) != "Fri" for d in dates)
+    assert h["since"] == "2025-12-29" and h["asOf"] == "2026-02-02"
+
+    # The split week is two entries, each carrying only the venue that filled:
+    # Monday is sleeve D's switch (0.20 of NAV out of EXH1 into EXV1, one-way
+    # turnover 0.20); Tuesday is the US sleeves' re-weighting (SOXX +0.35*0.2).
+    W = h["alloc_history"]["weights"]
+    assert abs(h["weekly"][1]["turnover"] - 0.20) < 1e-6
+    assert abs(W["EXV1"][1] - 0.20) < 1e-6 and abs(W["SOXX"][1] - 0.35 * 0.5) < 1e-6
+    assert abs(W["SOXX"][2] - 0.35 * 0.7) < 1e-6 and abs(W["EXV1"][2] - 0.20) < 1e-6
+    assert abs(h["weekly"][2]["turnover"] - 0.35 * 0.2) < 1e-6

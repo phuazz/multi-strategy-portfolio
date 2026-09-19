@@ -497,16 +497,20 @@ def build_action_history(overlay) -> list:
 
 
 def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
-    """Reconstruct the deployed blend's full weekly target-weight history.
+    """Reconstruct the deployed blend's full target-weight history.
 
-    The engine publishes each sleeve's weekly within-sleeve weights
-    (headline.trade_history). We combine them with the fixed blend allocations
-    and the overlay state (de-risk gate, EM tilt) per week — the same arithmetic
-    used for the current weights — to recover the per-ticker weekly weights since
-    inception. This is NOT re-running the strategy: signals are the engine's; we
-    only blend its published weights. Returns the trades block, or None if any
-    sleeve's history is unavailable (the caller then falls back to the forward
-    ledger). Validated: the latest reconstructed week equals live_track exactly.
+    The engine publishes each sleeve's within-sleeve weights per rebalance
+    (headline.trade_history, one entry per fill date). We combine them with the
+    fixed blend allocations and the overlay state (de-risk gate, EM tilt) on
+    each date any sleeve's book changed — the same arithmetic used for the
+    current weights — to recover the per-ticker weights since inception. The
+    dates are the engine's own fill dates, not a calendar grid: under the W-MON
+    cadence adopted on 2026-08-22 (WS18) that is the Monday close, or the next
+    session for a venue shut that Monday. This is NOT re-running the strategy:
+    signals are the engine's; we only blend its published weights. Returns the
+    trades block, or None if any sleeve's history is unavailable (the caller
+    then falls back to the forward ledger). Validated: the latest reconstructed
+    row equals live_track exactly.
     """
     sleeve_src = registry["source"].get("sleeve_history", {})
     if not sleeve_src:
@@ -535,10 +539,19 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
                 break
         return st
 
-    start, end = max(min(s) for s in sleeves.values()), max(max(s) for s in sleeves.values())
-    grid = [d.strftime("%Y-%m-%d") for d in pd.date_range(start=start, end=end, freq="W-FRI")]
-    if not grid or grid[-1] < end:
-        grid.append(end)                              # capture a non-Friday latest date
+    # The grid is the union of the dates on which any sleeve's published book
+    # changed, from the first date all four sleeves have one. No calendar
+    # frequency is assumed. The former ``pd.date_range(freq="W-FRI")`` grid
+    # matched the engine's Friday fill until 2026-08-22; when the engine moved
+    # to a Monday fill (WS18, HEADLINE_FREQ = "W-MON") and restated its whole
+    # history, that grid dated every rebalance since 2018 on the Friday AFTER
+    # the Monday it happened — four sessions late, and only the appended latest
+    # date was right. A Monday on which one venue is shut appears as two
+    # entries (that venue's sleeves fill at their next session), which is what
+    # the engine records. ISO-8601 strings order lexicographically; no date
+    # arithmetic is done here.
+    start = max(min(s) for s in sleeves.values())
+    grid = sorted({d for s in sleeves.values() for d in s if d >= start})
 
     keys = {c: sorted(s) for c, s in sleeves.items()}
 
@@ -554,7 +567,7 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         return "ADD" if c > f else "TRIM"
 
     weekly, prev, n_rebal = [], None, 0
-    tsleeve, matrix_rows = {}, []          # ticker -> sleeve, and (date, weights) per week
+    tsleeve, matrix_rows = {}, []          # ticker -> sleeve, and (date, weights) per rebalance date
     for d in grid:
         ton, roff = _state(tilts, d, "EM_TILT_ON"), _state(regime, d, "RISK_OFF")
         alloc = {"A": 0.35, "B": 0.25 if ton else 0.35, "C": 0.10, "D": 0.20}

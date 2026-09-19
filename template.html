@@ -245,12 +245,14 @@ const signClass = v => !isNum(v) ? '' : v>0 ? 'pos' : v<0 ? 'neg' : '';
 const colored = (txt,v) => `<span class="${signClass(v)}">${txt}</span>`;
 function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
 function fmtDateShort(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
-/* Weekday-carrying form. Every rebalance falls on a Friday and the weekday is
-   what makes that convention self-evident, so the digest prints it. Intl does
-   the derivation — no weekday is ever computed by hand. */
+/* Weekday-carrying form. Every rebalance falls on a Monday — the fill session
+   under the cadence the engine adopted on 2026-08-22 (rank on Friday's close,
+   fill at Monday's close), or the next session for a venue shut that Monday —
+   and the weekday is what makes that convention self-evident, so the digest
+   prints it. Intl does the derivation — no weekday is ever computed by hand. */
 function fmtDateDow(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00');
   return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
-          .replace(',','');   // "Fri, 7 Aug 2026" -> "Fri 7 Aug 2026"
+          .replace(',','');   // "Mon, 14 Sep 2026" -> "Mon 14 Sep 2026"
 }
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -643,25 +645,27 @@ function renderWhatChanged(){
   // The rows look like a blotter, so the card states plainly that they are not
   // one, and states the execution convention, which is easy to get wrong.
   //
-  // Corrected 2026-08-11 after the owner asked whether fills are Monday. They
-  // are not. Every sleeve reads its signal at the session BEFORE the rebalance
-  // date (prev_idx = get_loc(rd) - 1, normally Thursday), stamps the weights on
-  // the Friday, then earns them via weight_panel.shift(1) against close-to-close
-  // returns. shift(1) on close-to-close means the new Friday weight earns the
-  // Friday-close-to-Monday-close bar, which is only true if the position was
-  // established AT Friday's close. So the implied fill is the Friday close, and
-  // the signal-to-fill gap is one full session (Thursday close -> Friday close),
-  // long enough to work a market-on-close order.
-  //
-  // The earlier wording here said "decided at the Friday close and first earns
-  // on the following session". Both halves misled: the signal is Thursday's, and
-  // "first earns on the following session" reads as a Monday fill when the entry
-  // price is Friday's close.
+  // Corrected 2026-08-11 after the owner asked whether fills are Monday: under
+  // the W-FRI cadence then in force they were not (signal Thursday, fill at the
+  // Friday close). Restated 2026-09-19 for the W-MON cadence the engine adopted
+  // on 2026-08-22 (WS18; HEADLINE_FREQ = "W-MON" in all four sleeves, whole
+  // history restated). The mechanics are unchanged and the days move: every
+  // sleeve reads its signal at the session BEFORE the rebalance date
+  // (prev_idx = get_loc(rd) - 1, normally Friday), stamps the weights on the
+  // Monday, then earns them via weight_panel.shift(1) against close-to-close
+  // returns. shift(1) on close-to-close means the new Monday weight earns the
+  // Monday-close-to-Tuesday-close bar, which is only true if the position was
+  // established AT Monday's close. So the implied fill is the Monday close, and
+  // the signal-to-fill gap is one trading session (Friday close -> Monday
+  // close) that spans the weekend in calendar time — long enough to work a
+  // market-on-close order. A venue shut on the Monday fills at its next
+  // session, and the reconstruction carries the engine's own fill dates, so
+  // the weekday printed beside each rebalance is the fill session itself.
   return `<div class="card">
     <div class="card-h"><div class="card-title">What changed</div>
-      <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
+      <div class="card-note">since the previous rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
     ${body}
-    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Thursday) and the model assumes the switch is <strong>priced at the Friday close shown</strong>, so the first return it earns is Friday close to Monday close. The gap between signal and fill is one full session, not a weekend. Every entry and exit is listed however small; resizes appear once they move at least 0.5pp of NAV, so the count will not tally with the turnover figure beside it.</div></div>`;
+    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Friday) and the model assumes the switch is <strong>priced at the close on the date shown</strong> — the Monday fill under the cadence adopted on 2026-08-22, or the next session for a venue shut that Monday — so the first return it earns is the session that follows. The gap between signal and fill is one trading session, Friday close to Monday close, which spans the weekend in calendar time. Every entry and exit is listed however small; resizes appear once they move at least 0.5pp of NAV, so the count will not tally with the turnover figure beside it.</div></div>`;
 }
 
 /* ============================ OVERVIEW ============================ */
@@ -1632,7 +1636,7 @@ function renderTrades(){
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
   el.innerHTML = `
-    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Overlay actions</strong>, at the foot of this tab, highlights the macro de-risk and EM-tilt switches — those fire about twice a year, so they sit below the week-to-week record rather than in front of it. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
+    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weights on the engine's own fill dates — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Overlay actions</strong>, at the foot of this tab, highlights the macro de-risk and EM-tilt switches — those fire about twice a year, so they sit below the week-to-week record rather than in front of it. Cadence: ${esc(DS.meta.rebalance)}. A Monday on which one venue is shut shows as two entries, that venue's sleeves filling at their next session, as the engine records them. Major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
       <div class="card">
         <div class="card-h"><div class="card-title">${latestTitle}</div><div class="card-note">turnover ${pct(latest.turnover,1)} · ${latest.n} ${latest.type==='initial'?'positions':'trades'}</div></div>
@@ -1642,7 +1646,7 @@ function renderTrades(){
       <div class="card">
         <div class="card-title" style="margin-bottom:10px">Turnover by rebalance</div>
         <div id="trTurnover" class="chart" style="height:240px"></div>
-        <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each weekly rebalance since inception. First bar = initial deployment.</div>
+        <div class="card-note" style="margin-top:6px">One-way turnover (½·Σ|Δ weight|) at each rebalance since inception, dated on the engine's fill session. First bar = initial deployment.</div>
       </div>
     </div>
     <div class="card">
@@ -1844,7 +1848,7 @@ function renderMethod(){
       <p style="font-size:14px;line-height:1.7;color:var(--t2);max-width:860px">
         <strong>${esc(m.name)}</strong> is a systematic, rules-based global ETF rotation model. It blends four independent
         sleeves — US sector breadth, cross-asset trend, thematic momentum and European sector breadth — and overlays two
-        risk controls: a breadth de-risk gate and an emerging-market tilt. The book rebalances weekly (Friday close).
+        risk controls: a breadth de-risk gate and an emerging-market tilt. The book rebalances ${esc(String(m.rebalance||'weekly').replace(/^./,c=>c.toLowerCase()))}.
         Signals are computed on point-in-time ETF constituents and prices by the upstream engine; this monitor consumes
         that output and recomputes the analytics shown here. The backtest runs from ${fmtDate(m.inception)};
         <strong>${fmtDate(m.oos_start)} onward is treated as out-of-sample</strong> (marked on every performance chart),
