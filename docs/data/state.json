@@ -1,20 +1,20 @@
 {
   "contract_version": "1",
   "emitted_by": "multi-strategy-portfolio",
-  "emitted_at": "2026-10-03T02:19:07+00:00",
+  "emitted_at": "2026-10-04T12:56:22+00:00",
   "signals": {
     "monitor_health": {
       "as_of": "2026-10-02",
       "state": "ok",
       "value": 4,
-      "zone": "worst feed lag 3 of 12 bdays",
+      "zone": "worst feed lag 1 of 8 bdays",
       "role": "view-only",
       "horizon": "daily",
       "evidence_grade": "deployed-engine",
       "licence": "public",
       "action_hint": "none",
       "source_file": "docs/data/portfolio-multi-strategy-portfolio.json",
-      "computed_at": "2026-10-03T02:18:46Z",
+      "computed_at": "2026-10-04T12:56:04Z",
       "cadence": "daily"
     }
   }
