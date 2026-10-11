@@ -1494,7 +1494,7 @@ function renderRisk(){
       <div class="card">
         <div class="card-title" style="margin-bottom:14px">Breadth de-risk gate</div>
         <div style="font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1" class="${rg.state==='RISK_ON'?'pos':'neg'}">${br.toFixed(0)}%</div>
-        <div class="muted" style="font-size:12px;margin:4px 0 14px">S&amp;P 500 constituents above 200-day MA · ${rg.state==='RISK_ON'?'<span class="pos">Risk-On</span>':'<span class="neg">Risk-Off</span>'} since ${fmtDate(rg.since)}</div>
+        <div class="muted" style="font-size:12px;margin:4px 0 14px">S&amp;P 500 constituents above 50-day MA · ${rg.state==='RISK_ON'?'<span class="pos">Risk-On</span>':'<span class="neg">Risk-Off</span>'} since ${fmtDate(rg.since)}</div>
         <div style="position:relative;height:26px;border-radius:6px;overflow:hidden;background:linear-gradient(90deg,#c0392b 0%,#c0392b ${offT}%,#b45309 ${offT}%,#b45309 ${onT}%,#1a8754 ${onT}%,#1a8754 100%);opacity:0.85">
           <div style="position:absolute;top:-3px;bottom:-3px;left:${br}%;width:3px;background:#1a1a18;box-shadow:0 0 0 2px #fff"></div>
         </div>
