@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Multi-Strategy Portfolio — Model Portfolio Monitor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,10 +64,9 @@ a{color:var(--b-text);text-decoration:none}
 
 /* headline synthesis — the plain-language read between masthead and KPI strip */
 .headline-sent{margin:0 0 18px;font-size:16.5px;line-height:1.55;color:var(--t1);
-  /* 940px at 16.5px is 83ch, over MOBILE_CHECK's 65-75 ceiling. Capped in ch
-     so the measure holds if the type scale moves; 75ch rather than 66ch
-     because this is the masthead lede, not running body prose. */
-  letter-spacing:-0.1px;max-width:min(940px,75ch)}
+  /* The font's zero-width ch unit is wider than its mean prose character.
+     The rendered canvas check puts this cap below the 75-character ceiling. */
+  letter-spacing:-0.1px;max-width:min(940px,62ch)}
 .hs-num{font-weight:700;font-variant-numeric:tabular-nums}
 .hs-pos{color:var(--g-text)} .hs-neg{color:var(--r-text)}
 .hs-risk{margin-top:7px;font-size:12.5px;color:var(--t3-text);line-height:1.55}
@@ -143,7 +143,7 @@ a{color:var(--b-text);text-decoration:none}
 
 /* filter buttons */
 .fbtn{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--bd);
-  background:var(--bg2);color:var(--t3-text);min-height:32px}
+  background:var(--bg2);color:var(--t3-text);min-height:44px;min-width:44px}
 .fbtn.active{background:var(--t1);color:var(--bg2);border-color:var(--t1)}
 .fbtn:hover:not(.active){border-color:var(--t2);color:var(--t2)}
 .fbtns{display:flex;gap:6px;flex-wrap:wrap}
@@ -171,7 +171,7 @@ a{color:var(--b-text);text-decoration:none}
 .callout{background:var(--bg3);border-left:3px solid var(--bd-strong);padding:12px 16px;border-radius:6px;font-size:13px;color:var(--t2);line-height:1.6}
 .loading{padding:80px 20px;text-align:center;color:var(--t3-text);font-size:15px}
 .hint{background:var(--b-bg);border:1px solid var(--b-bg2);color:var(--b-text);font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px}
-.filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:32px;width:150px;background:var(--bg2);color:var(--t1)}
+.filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:44px;width:150px;background:var(--bg2);color:var(--t1)}
 .filter-input:focus{outline:none;border-color:var(--t2)}
 .row-exp{cursor:pointer}
 .row-exp:hover{background:var(--bg-hover)}
@@ -545,9 +545,9 @@ function buildDonut(elId, mapping, colorFn, centerTxt){
   const labels=Object.keys(mapping), vals=labels.map(k=>mapping[k]);
   const colors=labels.map(colorFn);
   plot(document.getElementById(elId), [{type:'pie',labels,values:vals,hole:0.62,sort:false,
-    marker:{colors,line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',
+    marker:{colors,line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',automargin:true,
     textfont:{size:11},hovertemplate:'%{label}<br>%{percent}<extra></extra>'}],
-    {margin:{t:10,b:10,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false,
+    {margin:{t:32,b:36,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false,
      annotations:centerTxt?[{text:centerTxt,showarrow:false,font:{size:13,family:'DM Sans',color:'#5c5c56'}}]:[]});
 }
 
@@ -1023,9 +1023,9 @@ function ovDonutData(){
 function renderOvDonut(){
   const e=ovDonutData();
   plot(document.getElementById('ovDonut'),[{type:'pie',labels:e.map(x=>x[0]),values:e.map(x=>x[1].v),hole:0.62,sort:false,
-    marker:{colors:e.map(x=>x[1].c),line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',textfont:{size:11},
+    marker:{colors:e.map(x=>x[1].c),line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',automargin:true,textfont:{size:11},
     hovertemplate:'%{label}<br>%{percent}<extra></extra>'}],
-    {margin:{t:14,b:14,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false});
+    {margin:{t:32,b:36,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false});
 }
 
 /* ============================ ALLOCATION ============================ */
@@ -1216,7 +1216,7 @@ function renderPerformance(){
       <div class="card-h">
         <div class="card-title">Cumulative return — model vs benchmarks</div>
         <div style="display:flex;gap:14px;align-items:center">
-          <label style="font-size:12px;color:var(--t3-text);display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
+          <label style="font-size:12px;color:var(--t3-text);display:flex;gap:5px;align-items:center;cursor:pointer;min-height:44px;min-width:44px"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
           <div id="perfWinBtns"></div>
         </div>
       </div>
