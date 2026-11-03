@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Multi-Strategy Portfolio — Model Portfolio Monitor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,10 +64,9 @@ a{color:var(--b-text);text-decoration:none}
 
 /* headline synthesis — the plain-language read between masthead and KPI strip */
 .headline-sent{margin:0 0 18px;font-size:16.5px;line-height:1.55;color:var(--t1);
-  /* 940px at 16.5px is 83ch, over MOBILE_CHECK's 65-75 ceiling. Capped in ch
-     so the measure holds if the type scale moves; 75ch rather than 66ch
-     because this is the masthead lede, not running body prose. */
-  letter-spacing:-0.1px;max-width:min(940px,75ch)}
+  /* The font's zero-width ch unit is wider than its mean prose character.
+     The rendered canvas check puts this cap below the 75-character ceiling. */
+  letter-spacing:-0.1px;max-width:min(940px,62ch)}
 .hs-num{font-weight:700;font-variant-numeric:tabular-nums}
 .hs-pos{color:var(--g-text)} .hs-neg{color:var(--r-text)}
 .hs-risk{margin-top:7px;font-size:12.5px;color:var(--t3-text);line-height:1.55}
@@ -143,7 +143,7 @@ a{color:var(--b-text);text-decoration:none}
 
 /* filter buttons */
 .fbtn{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--bd);
-  background:var(--bg2);color:var(--t3-text);min-height:32px}
+  background:var(--bg2);color:var(--t3-text);min-height:44px;min-width:44px}
 .fbtn.active{background:var(--t1);color:var(--bg2);border-color:var(--t1)}
 .fbtn:hover:not(.active){border-color:var(--t2);color:var(--t2)}
 .fbtns{display:flex;gap:6px;flex-wrap:wrap}
@@ -171,7 +171,7 @@ a{color:var(--b-text);text-decoration:none}
 .callout{background:var(--bg3);border-left:3px solid var(--bd-strong);padding:12px 16px;border-radius:6px;font-size:13px;color:var(--t2);line-height:1.6}
 .loading{padding:80px 20px;text-align:center;color:var(--t3-text);font-size:15px}
 .hint{background:var(--b-bg);border:1px solid var(--b-bg2);color:var(--b-text);font-size:12.5px;padding:9px 14px;border-radius:8px;margin-bottom:14px}
-.filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:32px;width:150px;background:var(--bg2);color:var(--t1)}
+.filter-input{padding:5px 10px;border:1px solid var(--bd2);border-radius:20px;font-size:12px;font-family:var(--sans);min-height:44px;width:150px;background:var(--bg2);color:var(--t1)}
 .filter-input:focus{outline:none;border-color:var(--t2)}
 .row-exp{cursor:pointer}
 .row-exp:hover{background:var(--bg-hover)}
@@ -245,8 +245,8 @@ const signClass = v => !isNum(v) ? '' : v>0 ? 'pos' : v<0 ? 'neg' : '';
 const colored = (txt,v) => `<span class="${signClass(v)}">${txt}</span>`;
 function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
 function fmtDateShort(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
-/* Weekday-carrying form. Every rebalance falls on a Friday and the weekday is
-   what makes that convention self-evident, so the digest prints it. Intl does
+/* Weekday-carrying form. Historical and current schedules differ, so the
+   digest prints the weekday carried by each actual row. Intl does
    the derivation — no weekday is ever computed by hand. */
 function fmtDateDow(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00');
   return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
@@ -545,9 +545,9 @@ function buildDonut(elId, mapping, colorFn, centerTxt){
   const labels=Object.keys(mapping), vals=labels.map(k=>mapping[k]);
   const colors=labels.map(colorFn);
   plot(document.getElementById(elId), [{type:'pie',labels,values:vals,hole:0.62,sort:false,
-    marker:{colors,line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',
+    marker:{colors,line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',automargin:true,
     textfont:{size:11},hovertemplate:'%{label}<br>%{percent}<extra></extra>'}],
-    {margin:{t:10,b:10,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false,
+    {margin:{t:32,b:36,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false,
      annotations:centerTxt?[{text:centerTxt,showarrow:false,font:{size:13,family:'DM Sans',color:'#5c5c56'}}]:[]});
 }
 
@@ -643,25 +643,14 @@ function renderWhatChanged(){
   // The rows look like a blotter, so the card states plainly that they are not
   // one, and states the execution convention, which is easy to get wrong.
   //
-  // Corrected 2026-08-11 after the owner asked whether fills are Monday. They
-  // are not. Every sleeve reads its signal at the session BEFORE the rebalance
-  // date (prev_idx = get_loc(rd) - 1, normally Thursday), stamps the weights on
-  // the Friday, then earns them via weight_panel.shift(1) against close-to-close
-  // returns. shift(1) on close-to-close means the new Friday weight earns the
-  // Friday-close-to-Monday-close bar, which is only true if the position was
-  // established AT Friday's close. So the implied fill is the Friday close, and
-  // the signal-to-fill gap is one full session (Thursday close -> Friday close),
-  // long enough to work a market-on-close order.
-  //
-  // The earlier wording here said "decided at the Friday close and first earns
-  // on the following session". Both halves misled: the signal is Thursday's, and
-  // "first earns on the following session" reads as a Monday fill when the entry
-  // price is Friday's close.
+  // The current engine fills on Monday from the preceding session's signal.
+  // Historical rows retain their own fill dates; a weekday is never assumed
+  // when formatting an individual row.
   return `<div class="card">
     <div class="card-h"><div class="card-title">What changed</div>
       <div class="card-note">since the previous weekly rebalance · <a href="#" onclick="setTab('trades');return false;">full history</a></div></div>
     ${body}
-    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The engine reads its signal at the <strong>prior session's close</strong> (normally Thursday) and the model assumes the switch is <strong>priced at the Friday close shown</strong>, so the first return it earns is Friday close to Monday close. The gap between signal and fill is one full session, not a weekend. Every entry and exit is listed however small; resizes appear once they move at least 0.5pp of NAV, so the count will not tally with the turnover figure beside it.</div></div>`;
+    <div class="card-note" style="margin-top:12px;line-height:1.55">Model weight changes, <strong>not executed trades</strong> — this is a paper portfolio. The current schedule reads the <strong>prior session's close</strong> (normally Friday) and assumes the switch is <strong>priced at Monday's close</strong>, with genuine venue holidays rolled forward. New weights first earn the following close-to-close return. Historical rows retain the schedule then in force. Every entry and exit is listed however small; resizes appear once they move at least 0.5pp of NAV, so the count will not tally with the turnover figure beside it.</div></div>`;
 }
 
 /* ============================ OVERVIEW ============================ */
@@ -1034,9 +1023,9 @@ function ovDonutData(){
 function renderOvDonut(){
   const e=ovDonutData();
   plot(document.getElementById('ovDonut'),[{type:'pie',labels:e.map(x=>x[0]),values:e.map(x=>x[1].v),hole:0.62,sort:false,
-    marker:{colors:e.map(x=>x[1].c),line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',textfont:{size:11},
+    marker:{colors:e.map(x=>x[1].c),line:{color:'#fff',width:2}},textinfo:'label+percent',textposition:'outside',automargin:true,textfont:{size:11},
     hovertemplate:'%{label}<br>%{percent}<extra></extra>'}],
-    {margin:{t:14,b:14,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false});
+    {margin:{t:32,b:36,l:10,r:10},paper_bgcolor:'transparent',font:PLOT_FONT,showlegend:false});
 }
 
 /* ============================ ALLOCATION ============================ */
@@ -1227,7 +1216,7 @@ function renderPerformance(){
       <div class="card-h">
         <div class="card-title">Cumulative return — model vs benchmarks</div>
         <div style="display:flex;gap:14px;align-items:center">
-          <label style="font-size:12px;color:var(--t3-text);display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
+          <label style="font-size:12px;color:var(--t3-text);display:flex;gap:5px;align-items:center;cursor:pointer;min-height:44px;min-width:44px"><input type="checkbox" id="perfLog" ${state.perfLog?'checked':''} onchange="togglePerfLog()"> log</label>
           <div id="perfWinBtns"></div>
         </div>
       </div>
@@ -1632,7 +1621,7 @@ function renderTrades(){
     <td class="r num">${pct(d.from,1)}</td><td class="r num">${pct(d.to,1)}</td>
     <td class="r num ${signClass(d.delta)}">${pctSigned(d.delta,1)}</td></tr>`;
   el.innerHTML = `
-    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Overlay actions</strong>, at the foot of this tab, highlights the macro de-risk and EM-tilt switches — those fire about twice a year, so they sit below the week-to-week record rather than in front of it. The model rebalances weekly (Fridays); major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
+    <div class="callout" style="margin-bottom:18px">Full portfolio-change history. The <strong>weight ledger</strong> reconstructs every weekly rebalance since ${fmtDate(t.since)} (${t.count} rebalances) by blending the engine's own published per-sleeve weekly weights — adds, trims, new entries and exits — so it matches the live book exactly. <strong>Overlay actions</strong>, at the foot of this tab, highlights the macro de-risk and EM-tilt switches — those fire about twice a year, so they sit below the week-to-week record rather than in front of it. Current schedule: ${esc(DS.meta.rebalance)}; major rebalances (&gt;8% turnover) show as thin blue verticals on the performance charts.</div>
     <div class="grid2">
       <div class="card">
         <div class="card-h"><div class="card-title">${latestTitle}</div><div class="card-note">turnover ${pct(latest.turnover,1)} · ${latest.n} ${latest.type==='initial'?'positions':'trades'}</div></div>
@@ -1804,7 +1793,7 @@ function renderHealth(){
       <div class="card-title" style="margin-bottom:12px">Feed freshness</div>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r">Lag</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
       <tbody>${h.feeds.map(feedRow).join('')}</tbody></table></div>
-      <div class="card-note" style="margin-top:8px">The live NAV refreshes daily and is measured in NYSE sessions against the last completed session — a budget of zero, so one session behind reads STALE. The breadth panel and the strategy-equity backtest regenerate in the weekly run, so they trail by design and keep wider business-day budgets. The headline model is extended to the live NAV date regardless of the backtest curves. The S&amp;P 500 row measures the engine's benchmark export (plus its yfinance extension) in sessions behind the NAV's own as-of: one behind is WARN and every S&amp;P-relative figure carries a date caveat; the series is never forward-filled onto a date it has no bar for.</div>
+      <div class="card-note" style="margin-top:8px">The live NAV refreshes daily and is measured in NYSE sessions against the last completed session — a budget of zero, so one session behind reads STALE. The executed portfolio is checked separately against the latest completed Monday core fill, rolling NYSE holidays forward. Current prices on an older portfolio read STALE. The breadth panel and the strategy-equity backtest keep their wider business-day budgets. The S&amp;P 500 row measures the engine's benchmark export (plus its yfinance extension) in sessions behind the NAV's own as-of: one behind is WARN and every S&amp;P-relative figure carries a date caveat; the series is never forward-filled onto a date it has no bar for.</div>
     </div>
     <div class="grid2">
       <div class="card">
