@@ -17,7 +17,8 @@ EXPECTED = date(2026, 7, 2)  # Thu — last completed session in the fixtures
 
 
 def _blob(live_asof: str | None, health: str = "ok") -> dict:
-    meta = {"asOf": live_asof, "live_asOf": live_asof}
+    meta = {"asOf": live_asof, "live_asOf": live_asof,
+            "portfolio_anchor": live_asof, "strategy_asOf": live_asof}
     if live_asof is None:
         meta = {}
     return {"meta": meta, "health": {"level": health}}
@@ -60,3 +61,18 @@ def test_missing_asof_fails():
 def test_unparseable_asof_fails():
     v = evaluate_dataset(_blob("not-a-date"), EXPECTED)
     assert v["status"] == "fail"
+
+
+def test_current_prices_on_previous_book_warn_even_with_green_health():
+    blob = _blob("2026-11-02")
+    blob["meta"].update(portfolio_anchor="2026-10-30", strategy_asOf="2026-10-30")
+    verdict = evaluate_dataset(blob, date(2026, 11, 2))
+    assert verdict["lag"] == 0
+    assert verdict["status"] == "warn"
+    assert verdict["book_level"] == "stale"
+
+
+def test_legacy_dataset_without_book_provenance_cannot_pass():
+    blob = _blob("2026-11-02")
+    del blob["meta"]["portfolio_anchor"]
+    assert evaluate_dataset(blob, date(2026, 11, 2))["book_level"] == "stale"

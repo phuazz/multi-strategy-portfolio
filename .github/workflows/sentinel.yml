@@ -50,6 +50,8 @@ jobs:
         run: pip install "pandas_market_calendars>=4.4"
 
       - name: Check deployed dashboard against the NYSE calendar
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/sentinel_check.py
 
       - name: Email sentinel alert

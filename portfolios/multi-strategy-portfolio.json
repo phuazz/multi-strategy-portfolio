@@ -6,7 +6,7 @@
   "inception": "2018-11-08",
   "in_sample_end": "2025-12-31",
   "oos_start": "2026-01-01",
-  "rebalance": "Weekly (Friday)",
+  "rebalance": "Weekly (Monday close; NYSE holidays roll forward)",
   "base_currency": "USD",
   "cost_assumption_bps": 5,
   "source": {
@@ -39,6 +39,8 @@
     "BIL": {"name": "T-Bills (cash)", "label": "Cash (T-Bills)", "type": "yfinance", "ticker": "BIL", "color": "#a16207"}
   },
   "freshness": {
+    "book_calendar": "NYSE",
+    "source_sync_grace_minutes": 120,
     "price_sessions": 0,
     "regime_bdays": 8,
     "strategy_bdays": 12,

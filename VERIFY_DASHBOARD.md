@@ -31,6 +31,9 @@ sync with `.github/workflows/*.yml`, `scripts/validate.py` and
      The cron sits PAST the engine's measured publish tail (its 21:30
      UTC daily has landed 22:35-23:18 UTC) — the fetch-before-publish
      race is the monitor's characteristic silent failure.
+     Also Sunday 07:00 UTC, plus an hourly minute-17 source-change probe.
+     Hourly runs skip the build when consumed engine blobs are unchanged.
+     Inputs are resolved and hash-verified at one immutable engine SHA.
   2. .github/workflows/sentinel.yml — daily 05:05 UTC: fetches the
      DEPLOYED dataset, alerts on session lag or health level 'stale'.
      Sized to the cron-delay tail; do not move earlier than ~04:30 UTC.
@@ -119,14 +122,17 @@ silently wrong, and design around each:
    Strategy equity (multi_strategy). Flag any feed within 2 business
    days of its budget as a watch item.
 
-7. Race + provenance check. For the last 5 monitor runs: compare each
-   run's start time (gh run list) against the ENGINE's corresponding
-   "Daily live track refresh" commit time (git log in the engine repo or
-   gh api) — every monitor run must START after the engine's publish
-   COMMITTED. Then verify the deployed dataset's health.source_commit is
-   an ancestor of the engine's origin/main and no older than the
-   engine's last publish at monitor run time. A monitor that ran early
-   shows here even when every banner is green.
+7. Race + provenance check. Compare the DEPLOYED meta.source_blobs
+   against the engine's consumed files, resolved at an immutable SHA.
+   Unrelated engine commits are not stale inputs. For any differing file,
+   find its latest path-specific commit at that SHA: a difference older
+   than 120 minutes is a FAIL. Confirm hourly probes fire and unchanged
+   ones skip dependency installation/build/commit. Confirm book coverage
+   (meta.portfolio_anchor and meta.strategy_asOf) clears the latest
+   completed Monday core fill, with NYSE holidays rolled forward.
+   Price dates alone must never pass this check. Check the source pin and
+   hash manifest together; a SHA recorded after moving-ref downloads is
+   not proof that the build consumed that version.
 
 8. Upstream headroom forecast. The regime feed (risk_overlay
    panel_end_date, budget 8 business days) and strategy feed

@@ -34,6 +34,7 @@ import datetime as dt
 import numpy as np
 
 from nyse_sessions import last_completed_session, sessions_behind
+from portfolio_freshness import evaluate_book
 
 _RANK = {"ok": 0, "warn": 1, "stale": 2}
 
@@ -99,6 +100,13 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         _bday_lag(multi.get("common_end"), run_date), fb.get("strategy_bdays", fb["regime_bdays"]),
         multi.get("computed_at_utc"))
 
+    if fb.get("book_calendar") == "NYSE":
+        book = evaluate_book(live.get("anchor_date"), multi.get("common_end"), now_utc)
+        add("Executed portfolio (engine anchor)", book["asOf"], book["lag"], 0,
+            multi.get("computed_at_utc"), basis="NYSE sessions", warn_at=0,
+            expected=book["expected"])
+        feeds[-1]["level"] = book["level"]
+
     # Benchmark vs the live NAV (2026-09-06). The S&P curve's base is the
     # engine's committed export, extended by yfinance returns; when the vendor
     # withholds the newest bar the curve stops a session short of the NAV and
@@ -126,7 +134,12 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         if f["level"] == "ok":
             continue
         lag, unit = f["bday_lag"], f["basis"]
-        if lag is None:
+        if f.get("expected") and f["level"] != "ok":
+            messages.append(
+                f"Executed portfolio covers {f['asOf'] or 'an unknown date'}; "
+                f"the latest completed core rebalance session is {f['expected']}. "
+                "Current prices do not confirm that the portfolio has been refreshed.")
+        elif lag is None:
             messages.append(f"{f['feed']}: as-of date missing.")
         elif f.get("versus"):
             messages.append(

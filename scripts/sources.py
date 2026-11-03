@@ -5,8 +5,9 @@ publish its data/*.json as standalone files on GitHub Pages, so we read them
 from the repository's raw endpoint instead. Each file is the engine's own
 output contract; we treat the fetched bundle as read-only upstream data.
 
-Provenance: we also resolve the latest commit SHA on the source ref so the
-monitor can stamp exactly which engine build produced the numbers it is showing.
+Provenance: resolve a commit first, fetch every file at that immutable SHA,
+and verify its Git blob hash before parsing. The dataset carries both the commit
+and the consumed blob manifest for the change probe and deployed sentinel.
 
 For offline development, --local <path-to-breadth-thrust-etf> reads the files
 straight off disk instead of the network.
@@ -14,11 +15,14 @@ straight off disk instead of the network.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 import requests
+
+from source_revision import resolve_snapshot
 
 REQUEST_TIMEOUT = 30
 
@@ -27,17 +31,6 @@ def _fetch_url(url: str) -> bytes:
     resp = requests.get(url, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     return resp.content
-
-
-def fetch_commit_sha(api_base: str, ref: str) -> str | None:
-    """Best-effort: latest commit SHA on the source ref (for provenance)."""
-    try:
-        url = f"{api_base}/commits/{ref}"
-        data = json.loads(_fetch_url(url))
-        return data.get("sha")
-    except Exception as exc:  # provenance is non-fatal — never block the build on it
-        print(f"  [sources] commit SHA lookup failed ({exc!r}); continuing", file=sys.stderr)
-        return None
 
 
 def load_sources(registry: dict, *, local: str | None = None) -> dict:
@@ -68,23 +61,36 @@ def load_sources(registry: dict, *, local: str | None = None) -> dict:
         out["source_commit"] = "LOCAL"
         return out
 
-    raw_base = src["raw_base"]
+    # Resolve BEFORE reading any file. A moving @main fetch followed by a SHA
+    # lookup can stamp a mixed bundle with a commit it never actually consumed.
+    snapshot = resolve_snapshot(src)
+    raw_base = f"https://raw.githubusercontent.com/{src['repo']}/{snapshot['commit']}/data"
+
+    def read_file(fn):
+        content = _fetch_url(f"{raw_base}/{fn}")
+        git_blob = hashlib.sha1(f"blob {len(content)}\0".encode() + content).hexdigest()
+        if git_blob != snapshot["files"][fn]:
+            raise ValueError(f"Engine blob verification failed for {fn}")
+        return json.loads(content)
+
     print(f"  [sources] fetching raw: {raw_base}")
     for fn in files:
         url = f"{raw_base}/{fn}"
         try:
-            out[fn] = json.loads(_fetch_url(url))
+            out[fn] = read_file(fn)
         except Exception as exc:
             raise RuntimeError(f"Failed to fetch required source {url}: {exc}") from exc
         print(f"    ok  {fn} ({len(json.dumps(out[fn]))//1024} KB)")
-    for fn in hist_files:                        # best-effort — never block the build
-        try:
-            out[fn] = json.loads(_fetch_url(f"{raw_base}/{fn}"))
-            print(f"    ok  {fn} (history, {len(json.dumps(out[fn]))//1024} KB)")
-        except Exception as exc:
-            print(f"  [sources] optional history file {fn} fetch failed ({exc!r})", file=sys.stderr)
+    for fn in hist_files:
+        if snapshot["files"][fn] is None:
+            continue                            # genuinely absent at the pinned commit
+        # A published history file failing to download must not silently switch
+        # the rendered rebalance ledger to a different reconstruction basis.
+        out[fn] = read_file(fn)
+        print(f"    ok  {fn} (history, {len(json.dumps(out[fn]))//1024} KB)")
 
-    out["source_commit"] = fetch_commit_sha(src["api_base"], src["ref"])
+    out["source_commit"] = snapshot["commit"]
+    out["source_blobs"] = snapshot["files"]
     return out
 
 

@@ -107,15 +107,11 @@ the comparison is like-for-like), and any holding on a third calendar is reporte
 rather than dropped. When a venue is closed its tile says so; the 1-Day tile carries the last
 completed session for the whole book.
 
-**Execution convention.** A rebalance dated Friday is assumed **filled at that Friday's close**,
-not on the Monday. Each sleeve reads its signal at the session *before* the rebalance date
-(`prev_idx = closes.index.get_loc(rd) - 1`, normally Thursday), stamps the target weights on the
-Friday, and earns them through `weight_panel.shift(1)` against close-to-close returns. Because
-`shift(1)` on close-to-close returns makes the new Friday weight earn the Friday-close to
-Monday-close bar, the position must already exist at Friday's close — hence a Friday fill. The
-signal-to-fill gap is therefore one full session (Thursday close to Friday close), long enough to
-work a market-on-close order, and is not a weekend. The digest labels the rows
-"priced at Fri … close" and states that they are model weights, never executed trades.
+**Execution convention.** The current engine reads the preceding session's signal (normally
+Friday) and assumes a Monday-close fill, with genuine venue holidays rolled forward. New
+weights first earn the following close-to-close return. Historical rows retain the schedule
+then in force. The digest derives each row's weekday from its actual date and describes
+model weight changes, never actual trades.
 
 Overview also carries a **What changed** digest, windowed on the last rebalance rather than
 the last day — the model rebalances weekly, so a daily window would be empty most days. When
@@ -157,21 +153,38 @@ copies it to `docs/index.html` and writes the dataset to `docs/data/`. Never edi
 
 ## Automation
 
-`.github/workflows/daily_monitor.yml` runs Mon–Fri 23:40 UTC: fetch → build → validate →
-test → capture-integrity check → commit `docs/` → Pages. The cron sits past the engine's
-*measured* publish tail (its 21:30 UTC daily has landed as late as 23:18 UTC) rather than
-its scheduled time — fetching before the engine publishes would bake yesterday's data as
-latest inside the freshness budget, silently. Publishes follow the engine's cadence rule:
-every Friday after the US close even on US market holidays, using the latest populated
-close.
+`.github/workflows/daily_monitor.yml` retains its Mon–Fri 23:40 UTC and Sunday 07:00 UTC
+full builds. It also probes the engine hourly, at minute 17. The probe compares Git blob
+identities for the five required feeds and four sleeve histories against the dataset's
+`meta.source_blobs`. Only a changed consumed file triggers the hourly build; unrelated
+engine commits do not install dependencies, rebuild or commit output. GitHub can delay
+scheduled jobs, so hourly is a target cadence, not a delivery guarantee.
+
+Each build resolves the engine commit first, fetches all inputs at that immutable SHA,
+and verifies each Git blob hash before parsing. A failed API lookup or a failed download
+of a published history file fails the run; it cannot read as "unchanged" or silently
+fall back to a different trade-history basis. Push failures also fail after bounded retries.
+No upstream changes, cross-repository write credential or additional secret are required.
+
+The engine's daily price update can precede its local post-fill refresh. A recent price
+date therefore does not establish that the latest portfolio has been imported. The new
+Executed portfolio feed checks the earlier of `live_track.anchor_date` and
+`multi_strategy.common_end` against the latest completed Monday core fill, rolling NYSE
+holidays to the next session. A missing fill is STALE even when prices are current. This
+checks publication coverage, not whether each sleeve changed holdings: a valid HOLD can
+retain its selection inside a freshly published engine book.
 
 **Ops alerting (2026-07-03)**: the daily workflow emails the operator (GMAIL_USER) on any
 failure, and on a capture warning (baked live as-of behind the NYSE calendar, or baked
 health not `ok`) while still publishing — staleness is surfaced, never hidden. Outside-in,
 `.github/workflows/sentinel.yml` (daily 05:05 UTC = 13:05 SGT, sized to GitHub's
-cron-delay tail) fetches the DEPLOYED dataset and emails `[SENTINEL]` on session lag or a
-stale health level — it shares no state with the build, so it catches a green run that
-published wrong artefacts. Requires the `GMAIL_USER` / `GMAIL_APP_PASSWORD` repository
+cron-delay tail) fetches the DEPLOYED dataset and emails `[SENTINEL]` on session lag,
+missing executed-book coverage, stale health, or consumed engine files not imported within
+120 minutes. That grace runs from the changed file's publication commit, so an unrelated
+engine commit cannot reset it. The sentinel resolves the current engine independently of
+the build and fails if verification is unavailable. The existing fleet-watch output and
+run rows cover this same workflow (`multi-strategy monitor` / `multi-strategy build`).
+Requires the `GMAIL_USER` / `GMAIL_APP_PASSWORD` repository
 secrets. `VERIFY_DASHBOARD.md` holds the manual deep-audit prompt.
 
 ## Data integrity
@@ -184,7 +197,8 @@ breadth panel. Every build:
 - asserts the regime since-date equals the latest switch event (the incident's signature);
 - reconciles its recomputed Sharpe/CAGR/max-DD against the engine's own figures;
 - renders the live mark-to-market extension as a distinct dashed segment — never silently spliced;
-- stamps the engine commit SHA and every feed's `computed_at` for provenance.
+- stamps the immutable engine SHA, verified source blob manifest, book coverage and every
+  feed's `computed_at` for provenance.
 
 ## Related
 

@@ -14,6 +14,8 @@ Alert conditions (exit 1 -> the workflow's failure email):
   - the deployed health level is 'stale' (the site is loudly stale —
     correct rendering, but the operator should not need to open the
     page to learn it).
+  - executed-book coverage misses the latest completed core fill, or
+  - a consumed engine file remains unimported beyond its sync budget.
 
 A deployed health level of 'warn' prints but does not alert: warn states
 are surfaced on the Data Health tab by design.
@@ -32,9 +34,10 @@ from pathlib import Path
 
 # Allow importing sibling scripts/ modules.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import ACTIVE_PORTFOLIO_IDS  # noqa: E402
+from config import ACTIVE_PORTFOLIO_IDS, load_registry  # noqa: E402
 from check_capture_integrity import evaluate_dataset  # noqa: E402
 from nyse_sessions import last_completed_session  # noqa: E402
+from source_revision import overdue_source_files, resolve_snapshot  # noqa: E402
 
 # The one Pages site this repo publishes. docs/ is served at the root.
 PAGES_BASE = "https://phuazz.github.io/multi-strategy-portfolio"
@@ -63,7 +66,8 @@ def fetch_deployed_dataset(pid: str) -> dict:
 
 
 def main() -> int:
-    expected = last_completed_session(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    expected = last_completed_session(now)
     print(f"expected last completed NYSE session: {expected.isoformat()}")
     failures = []
     for pid in ACTIVE_PORTFOLIO_IDS:
@@ -73,14 +77,26 @@ def main() -> int:
             print(f"FAIL  {pid}: {exc}")
             failures.append(pid)
             continue
-        verdict = evaluate_dataset(blob, expected)
+        verdict = evaluate_dataset(blob, expected, now)
+        try:
+            reg = load_registry(pid)
+            snapshot = resolve_snapshot(reg["source"])
+            overdue = overdue_source_files(blob["meta"], snapshot, reg["source"], now,
+                                           reg["freshness"].get("source_sync_grace_minutes", 120))
+        except Exception as exc:
+            print(f"FAIL  {pid}: cannot verify engine publication: {exc}")
+            failures.append(pid)
+            continue
         # Alert on corruption, any session lag, or a loudly-stale
         # deployment; tolerate health 'warn' (surfaced on-page by design).
         alert = (verdict["status"] == "fail"
                  or (verdict["lag"] or 0) >= 1
-                 or verdict["health_level"] == "stale")
+                 or verdict["health_level"] == "stale"
+                 or verdict.get("book_level") != "ok" or bool(overdue))
         tag = "FAIL" if alert else "ok  "
         print(f"{tag}  {pid}: {verdict['evidence']}")
+        if overdue:
+            print(f"FAIL  engine files not imported within the sync budget: {overdue}")
         if alert:
             failures.append(pid)
     if failures:

@@ -1,13 +1,10 @@
 """Capture-integrity check: did this build capture the session it should
 have, and is the baked dataset structurally sound?
 
-Closes the silent class the existing gates cannot reach. validate.py
-budgets are deliberately wide (price 4 business days), so a build that
-fetches the engine BEFORE the engine's delayed nightly publish bakes
-yesterday-as-latest with health level 'ok' — green run, no banner, wrong
-expectation. This check anchors the BAKED dataset's live as-of to the
-true NYSE calendar (scripts/nyse_sessions.py) and reports through the
-workflow's email steps.
+Checks both the daily price date and the executed-book coverage in the
+BAKED dataset independently of its health badge. Current prices on an old
+portfolio warn even if the badge says 'ok'. Uses the true NYSE calendar
+and reports through the workflow's existing email steps.
 
 Verdict policy — this repo surfaces upstream problems, it does not go
 dark on them (see CLAUDE.md), so upstream staleness NEVER blocks the
@@ -29,16 +26,17 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 
 # Allow importing sibling scripts/ modules.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import ACTIVE_PORTFOLIO_IDS, dataset_path  # noqa: E402
 from nyse_sessions import last_completed_session, sessions_behind  # noqa: E402
+from portfolio_freshness import evaluate_book  # noqa: E402
 
 
-def evaluate_dataset(blob: dict, expected: date) -> dict:
+def evaluate_dataset(blob: dict, expected: date, now_utc: datetime | None = None) -> dict:
     """Verdict for one baked dataset:
     {status, lag, health_level, evidence}. ``lag`` is None when the
     dataset is too corrupt to compute one.
@@ -58,15 +56,19 @@ def evaluate_dataset(blob: dict, expected: date) -> dict:
         return {"status": "fail", "lag": None, "health_level": health_level,
                 "evidence": f"unparseable live_asOf {live_asof!r} ({exc})"}
     lag = sessions_behind(live_date, expected)
+    book = evaluate_book(meta.get("portfolio_anchor"), meta.get("strategy_asOf"),
+                         now_utc or datetime.combine(expected, time.max, timezone.utc))
 
-    if lag >= 1 or health_level != "ok":
+    if lag >= 1 or health_level != "ok" or book["level"] != "ok":
         status = "warn"
     else:
         status = "ok"
     return {"status": status, "lag": lag, "health_level": health_level,
+            "book_level": book["level"],
             "evidence": (f"live as-of {live_date.isoformat()}, {lag} session(s) "
                          f"behind expected {expected.isoformat()}; baked health "
-                         f"level '{health_level}'")}
+                         f"level '{health_level}'; portfolio coverage {book['asOf']}, "
+                         f"required core fill {book['expected']} ({book['level']})")}
 
 
 def write_github_output(values: dict[str, str], detail: str) -> None:
@@ -84,13 +86,14 @@ def write_github_output(values: dict[str, str], detail: str) -> None:
 
 
 def main() -> int:
-    expected = last_completed_session(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    expected = last_completed_session(now)
     results = []
     for pid in ACTIVE_PORTFOLIO_IDS:
         path = dataset_path(pid)
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))
-            verdict = evaluate_dataset(blob, expected)
+            verdict = evaluate_dataset(blob, expected, now)
         except Exception as exc:
             verdict = {"status": "fail",
                        "evidence": f"unreadable dataset {path.name}: {exc}"}

@@ -2,6 +2,9 @@
 # The committed, client-served copy lives in docs/data/.
 /data/
 
+# Local rendered QA output; production output remains under docs/.
+/.preview/
+
 # Python
 __pycache__/
 *.py[cod]
