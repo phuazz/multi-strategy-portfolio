@@ -26,6 +26,9 @@ def verify_html(path):
                 context=browser.new_context(viewport={'width':width,'height':height},is_mobile=True,device_scale_factor=1)
                 page=context.new_page()
                 page.goto(f'http://127.0.0.1:{server.server_port}/{path.name}',wait_until='networkidle')
+                gauges=page.evaluate('''()=>[...document.querySelectorAll('[data-risk-gauge]')].map(e=>({units:Number(e.dataset.units),width:e.getBoundingClientRect().width,fill:[...e.querySelectorAll('[data-risk-segment]')].reduce((a,b)=>a+b.getBoundingClientRect().width,0)}))''')
+                for gauge in gauges:
+                    assert abs(gauge['fill']/gauge['width']-min(2.5,abs(gauge['units']))/5)<.015,gauge
                 m=page.evaluate('''() => {
                     const width=document.documentElement.clientWidth;
                     const visible=[...document.querySelectorAll('body *')].filter(e=>e.checkVisibility());
@@ -93,6 +96,12 @@ def verify_attribution_content(report, pdf_path, html_path):
         for side in ('positive','negative'):
             for row in leaders(attribution,horizon)[side][:3]:
                 assert row['ticker'] in email and bp(row['contrib']) in email, 'Email leader missing'
+    if report.get('return_context'):
+        from return_context import rows
+        from return_context_visuals import RiskMove
+        assert 'Return context and risk' in text and 'How large was the move relative to risk?' in email
+        for row in rows(report['return_context']):
+            assert RiskMove(row['units']).text in text and RiskMove(row['units']).text in email,'Risk-unit label missing'
     return {'etf_rows':len(etfs),'horizons':['1D','1M'],'rendered_content':'pass'}
 
 

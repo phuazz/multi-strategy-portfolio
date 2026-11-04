@@ -47,7 +47,7 @@ The HTML email contains the session/YTD/drawdown figures, matched-period returns
 a compact risk table, positioning and historical 1D/1M attribution. The A4 PDF
 adds full risk ratios, benchmark-relative statistics, every historical ETF row,
 valuation windows, sources and methodology (normally four pages; guarded at three
-to six). Both derive from the same report object. Source and dashboard links are
+to six; five with the return-context page). Both derive from the same report object. Source and dashboard links are
 clickable. The plain-text alternative remains available for email clients.
 
 Colour and data bars support scanning: green/red for signed returns and contributions,
@@ -57,6 +57,14 @@ remain explicit. Weight and risk tracks each span 0-100%, with their distinct
 denominators stated. Missing risk shares have no bar. The drawdown track ends at the
 historical maximum, labelled as context rather than a risk limit. A delayed-data notice
 uses amber. Colours do not substitute for numbers or state labels.
+
+A separate 1D/1M return-context panel shows actual return and estimated one-standard-
+deviation moves on a common -2.5 to +2.5 risk-unit scale, with +/-1 and +/-2 markers.
+Portfolio return uses model volatility; benchmark excess uses tracking error.
+The estimate uses 252 prior matched single-session returns, excludes calendar gaps
+and does not use the reported window. Training dates and gap counts travel with
+the figures. This is descriptive risk context, not a z-score or probability band.
+See [RETURN_CONTEXT.md](RETURN_CONTEXT.md). Attribution bars remain in basis points.
 
 Holding contributions use historical published model holdings, effective after
 their fill-date close. Daily USD contributions are linked using prior official NAV

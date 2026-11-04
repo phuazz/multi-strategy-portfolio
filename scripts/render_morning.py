@@ -8,6 +8,8 @@ import math
 
 from morning_report import PAGE, URL, fmt
 from attribution_presentation import bp, comparison_rows, leaders, bridge_text
+from return_context import rows as context_rows
+from return_context_visuals import context_html, RiskMove, LIMIT
 
 INK, MUTED, GREEN, RED, BORDER = '#1a1a18', '#5c5c56', '#146c43', '#a93226', '#e2e0d8'
 BLUE, CYAN, TRACK = '#1d4ed8', '#0e7490', '#eeeee8'
@@ -164,6 +166,7 @@ def report_html(r, preview=False):
     body += table(['Period','Model',SPY_LABEL,'Excess (pp)'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY')]+[excess(x)] for x in perf])
     body += f'<p class="small">{SPY_BASIS} Excess = model minus proxy on identical endpoints, in percentage points (pp). Green/red excess means outperformance/underperformance, even when both returns are negative.</p>'
     body += f'<p class="small">Return bars share one 0-{scale:.1%} magnitude scale: green = gain; red = loss. The PDF also shows the global 60/40 fund comparator and exact start dates.</p>'
+    body += context_html(r.get('return_context'))
     body += contribution_html(r)
     body += '<h2>Risk and positioning</h2>'
     w,g=r['weights'],r['regime']
@@ -198,6 +201,20 @@ def report_pdf(r, path, preview=False):
             if v.value is None: return
             c.setFillColor(colors.HexColor(TRACK)); c.rect(0,1,self.width,3,stroke=0,fill=1)
             c.setFillColor(colors.HexColor(v.colour)); c.rect(0,1,self.width*v.fraction,3,stroke=0,fill=1)
+    class PDFRiskMove(Flowable):
+        def __init__(self,value,width):
+            super().__init__();self.value=value;self.width=width;self.height=43
+        def draw(self):
+            c=self.canv;v=self.value.value
+            c.setFont('Helvetica-Bold',8.5);c.setFillColor(colors.HexColor(INK));c.drawString(0,31,self.value.text)
+            if v is None:return
+            for lo,hi,bg in [(-LIMIT,LIMIT,'#f5f5f0'),(-2,2,'#edf2f7'),(-1,1,'#dce8f4')]:
+                c.setFillColor(colors.HexColor(bg));c.rect((lo+LIMIT)/(2*LIMIT)*self.width,16,(hi-lo)/(2*LIMIT)*self.width,8,stroke=0,fill=1)
+            clipped=max(-LIMIT,min(LIMIT,v));a,b=sorted((0,clipped))
+            c.setFillColor(colors.HexColor(GREEN if v>=0 else RED));c.rect((a+LIMIT)/(2*LIMIT)*self.width,16,(b-a)/(2*LIMIT)*self.width,8,stroke=0,fill=1)
+            c.setFillColor(colors.HexColor(MUTED));c.setStrokeColor(colors.HexColor(MUTED));c.setFont('Helvetica',8.5)
+            for tick in [-2,-1,0,1,2]:
+                x=(tick+LIMIT)/(2*LIMIT)*self.width;c.line(x,14,x,26);c.drawCentredString(x,2,f'{tick:+d}' if tick else '0')
     styles={
         'title':ParagraphStyle('title',fontName='Times-Roman',fontSize=27,leading=30,textColor=colors.HexColor(INK),spaceAfter=12),
         'h':ParagraphStyle('h',fontName='Helvetica-Bold',fontSize=12,leading=16,spaceBefore=14,spaceAfter=7),
@@ -211,7 +228,7 @@ def report_pdf(r, path, preview=False):
     def t(headers,rows,widths):
         # Equal pixel lengths per unit within a table, even if text-column widths differ.
         bar_width=min([widths[i]-12 for row in rows for i,x in enumerate(row) if isinstance(x,BarValue)]+[width])
-        data=[[PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(f'<font color="{x.colour}"><b>{x.text}</b></font>' if isinstance(x,ExcessValue) else escape(str(x)).replace('\n','<br/>'),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
+        data=[[PDFRiskMove(x,widths[i]-12) if isinstance(x,RiskMove) else PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(f'<font color="{x.colour}"><b>{x.text}</b></font>' if isinstance(x,ExcessValue) else escape(str(x)).replace('\n','<br/>'),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
         tb=Table(data,colWidths=widths,repeatRows=1,hAlign='LEFT')
         tb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#f5f5f0')),('LINEBELOW',(0,0),(-1,-1),.4,colors.HexColor(BORDER)),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)]))
         flow.append(tb)
@@ -229,6 +246,19 @@ def report_pdf(r, path, preview=False):
     t(['Period','Model',SPY_LABEL,'Excess (pp)','Global 60/40','Start'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY')]+[excess(x),BarValue(x.get('AOR'),scale),x['start']] for x in r['performance']],[width*.12,width*.14,width*.17,width*.15,width*.18,width*.24])
     p(f'All periods end {r["nav_date"]}. Bars show absolute return on a common 0-{scale:.1%} scale; green = gain, red = loss. Global 60/40: balanced-fund proxy. Source: deployed model dataset.','small')
     p(SPY_BASIS+' Excess = model minus proxy, in percentage points.','small')
+    if r.get('return_context'):
+        flow.append(PageBreak())
+        p('Return context and risk','title')
+        p('How large was the move relative to prior risk?','h')
+        context=r['return_context']
+        t(['Window / measure','Actual','1 s.d.','Move / risk'],[[x['horizon']+' / '+x['label'],
+          '-' if x['return'] is None else f'{x["return"]*100:+.2f}'+(' pp' if x['kind']=='active' else '%'),
+          '-' if x['one_sd'] is None else f'{x["one_sd"]*100:.2f}'+(' pp' if x['kind']=='active' else '%'),RiskMove(x['units'])] for x in context_rows(context)],
+          [width*.31,width*.14,width*.14,width*.41])
+        p('Shading marks +/-1 and +/-2; all tracks end at +/-2.5. Full numeric values remain visible beyond the scale. Green/red shows return direction. Active risk is tracking error against the S&P 500 TR proxy.','small')
+        for hz,cp in context['periods'].items():
+            p(f'{hz}: {cp["start"]} to {cp["end"]}. '+(f'{cp["sessions"]} sessions; {cp["observations"]} prior matched daily returns, {cp["training_start"]} to {cp["training_end"]}; {cp["excluded_gaps"]} gap observations excluded.' if cp['status']=='ok' else cp['reason']),'small')
+        p(context['method']+' Source: published model NAV and SPY adjusted-close proxy.','small')
     p('Long-term risk scorecard','h')
     t(['Window','CAGR','Vol.','Sharpe','Sortino','Calmar','Max DD'],[[{'Full published history (includes backtest)':'Full history','Trailing 3 years':'3 years','Trailing 1 year':'1 year'}[x['period']],pct(x['cagr']),pct(x['vol']),number(x['sharpe']),number(x['sortino']),number(x['calmar']),pct(x['max_dd'])] for x in r['risk_rows']],[width*.19]+[width*.135]*6)
     for x in r['risk_rows']: p(f'{escape(x["period"])}: {x["start"]} to {x["end"]}; {x["observations"]} return observations.','small')

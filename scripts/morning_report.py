@@ -143,6 +143,17 @@ def build(d, now):
         lines.append(row)
         performance.append(item)
     lines += ['S&P 500 total-return proxy: SPY adjusted close, including distributions and fund expenses; not the exact index return. Excess is the model return minus the proxy on identical endpoints, in percentage points.', '', f'2. Risk and long-term record through {end:%Y-%m-%d}']
+    from return_context import build as build_context, rows as context_rows, units
+    context=build_context(s,benchmarks.get('SPY'))
+    for row in context_rows(context):
+        scale='unavailable' if row['one_sd'] is None else f'{row["one_sd"]*100:.2f}'+(' pp' if row['kind']=='active' else '%')
+        lines.append(f'{row["horizon"]} {row["label"]}: {units(row["units"])} prior volatility; one standard deviation {scale}.')
+    for horizon,period in context['periods'].items():
+        if period['status']=='ok':
+            lines.append(f'{horizon}: {period["start"]} to {period["end"]}; estimated from {period["observations"]} matched daily returns, {period["training_start"]} to {period["training_end"]}; {period["excluded_gaps"]} gap observations excluded.')
+        else:
+            lines.append(f'{horizon}: {period["reason"]}.')
+    lines.append(context['method'])
     def trailing(years):
         prior = s.loc[s.index <= end-pd.DateOffset(years=years)]
         return s.loc[s.index >= prior.index[-1]] if len(prior) else s.iloc[0:0]
@@ -209,7 +220,7 @@ def build(d, now):
     return {'subject':f'Multi-Strategy morning | {state} | NAV {end:%Y-%m-%d}',
             'body':'\n'.join(lines), 'expected_session':str(expected), 'nav_date':str(end.date()),
             'status':state, 'generated_at_utc':now.astimezone(timezone.utc).isoformat(),
-            'performance':performance,'risk_rows':risk_rows,'relative_rows':relative_rows,
+            'performance':performance,'risk_rows':risk_rows,'relative_rows':relative_rows,'return_context':context,
             'current_dd':rs['current_dd'],'underwater_days':rs['underwater_days'],
             'meta':meta,'regime':regime,'weights':weights,'risk_contributors':risk,
             'attribution':attribution}

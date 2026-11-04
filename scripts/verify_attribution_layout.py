@@ -34,6 +34,13 @@ def verify(root, output):
                     dimensions=page.evaluate('({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})')
                     assert dimensions['width']==width and dimensions['scroll']<=width+1,(tab,dimensions)
                     assert not errors,(tab,errors)
+                    if tab in ('overview','performance') and page.evaluate('Boolean(DS.return_context)'):
+                        risk=page.evaluate('''()=>[...document.querySelectorAll('.risk-context-row')].map(e=>{const x=DS.return_context.periods[e.dataset.horizon][e.dataset.kind],bar=e.querySelector('[data-risk-fill]');return {actual:e.querySelector('[data-risk-units]').textContent,expected:riskUnits(x.units),fraction:bar?bar.getBoundingClientRect().width/bar.parentElement.getBoundingClientRect().width:null,units:x.units}})''')
+                        assert len(risk)==4,risk
+                        for row in risk:
+                            assert row['actual']==row['expected'],row
+                            if row['units'] is not None:assert abs(row['fraction']-min(2.5,abs(row['units']))/5)<.001,row
+                        page.locator('[data-risk-context]').screenshot(path=str(output/f'risk-context-{tab}-{width}.png'))
                 page.evaluate("setTab('attribution')")
                 page.wait_for_function('document.fonts.status === "loaded"')
                 for horizon in ('1D','1M'):

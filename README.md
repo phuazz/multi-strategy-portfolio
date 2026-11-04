@@ -139,6 +139,11 @@ and unexplained residuals remain visible. The dashboard, email and complete PDF
 share this version-2 dataset; [ATTRIBUTION.md](ATTRIBUTION.md) defines the method,
 price basis and verification guards.
 
+The Overview and Performance tabs also show 1D/1M returns in prior volatility
+units, with matched benchmark excess scaled by tracking error. The email and PDF
+use the same method. [RETURN_CONTEXT.md](RETURN_CONTEXT.md) defines the lagged
+252-observation estimate, gap exclusions and interpretation limits.
+
 ## Build & develop
 
 ```bash
