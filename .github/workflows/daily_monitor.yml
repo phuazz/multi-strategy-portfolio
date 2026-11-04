@@ -37,10 +37,19 @@ on:
     - cron: '17 * * * *'     # hourly source-change probe; unchanged inputs skip the build
     - cron: '40 23 * * 1-5'   # Mon-Fri 23:40 UTC (early morning SGT)
     - cron: '0 7 * * 0'       # Sun 07:00 UTC (15:00 SGT): after the engine's weekend restatement
-  workflow_dispatch:           # manual trigger
+  workflow_dispatch:
+    inputs:
+      catchup_attempt:
+        description: 'Bounded stale-data recovery attempt; leave 0 for a normal refresh'
+        type: number
+        default: 0
 
 permissions:
   contents: write
+  actions: write             # dispatch a bounded follow-up after a stale capture
+
+env:
+  CATCHUP_ATTEMPT: ${{ inputs.catchup_attempt || 0 }}
 
 concurrency:
   group: daily-monitor
@@ -49,13 +58,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 40, not 10 (2026-09-09). The build step now waits up to 24 minutes for a
-    # vendor benchmark bar that has not posted yet (config.BENCH_TAIL_WAIT_*),
-    # rather than publishing a NAV and a benchmark on different dates. The
-    # timeout must sit above that ceiling or the wait would turn an intermittent
-    # warn into an intermittent FAIL. On a healthy day nothing waits and the job
-    # still finishes inside a minute.
-    timeout-minutes: 40
+    # Includes a 20-minute source wait on follow-ups and the existing
+    # 24-minute benchmark-tail budget, plus setup, build and tests.
+    timeout-minutes: 65
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,11 +68,17 @@ jobs:
           fetch-depth: 1
           ref: main
 
+      - name: Wait for a delayed engine publication
+        if: env.CATCHUP_ATTEMPT != '0'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/catchup_refresh.py wait --attempt "$CATCHUP_ATTEMPT"
+
       - name: Check for a new engine publication
         id: source
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ONLY_IF_CHANGED: ${{ github.event_name == 'schedule' && github.event.schedule == '17 * * * *' }}
+          ONLY_IF_CHANGED: ${{ (github.event_name == 'schedule' && github.event.schedule == '17 * * * *') || inputs.catchup_attempt > 0 }}
         run: |
           if [ "$ONLY_IF_CHANGED" = "true" ]; then
             python scripts/sync_source.py --only-if-changed
@@ -109,7 +120,7 @@ jobs:
         run: python scripts/check_capture_integrity.py
 
       - name: Email capture warning
-        if: steps.capture.outputs.capture_warn == 'true'
+        if: steps.capture.outputs.capture_warn == 'true' && env.CATCHUP_ATTEMPT == '0'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -150,6 +161,11 @@ jobs:
           done
           echo "::error::Monitor output could not be pushed after 3 attempts."
           exit 1
+
+      - name: Recover a late engine publication
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/catchup_refresh.py schedule --attempt "$CATCHUP_ATTEMPT"
 
       # ----- Failure alert (2026-07-03) -----
       # A fetch, build, test or capture failure previously died silently

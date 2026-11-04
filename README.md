@@ -160,6 +160,15 @@ identities for the five required feeds and four sleeve histories against the dat
 engine commits do not install dependencies, rebuild or commit output. GitHub can delay
 scheduled jobs, so hourly is a target cadence, not a delivery guarantee.
 
+If a completed build still has stale Price/NAV or executed-book coverage, it can
+request a bounded follow-up directly through this repository's workflow-dispatch
+API. Each follow-up waits up to 20 minutes for consumed engine files to change,
+then rebuilds only on change. Recovery stops as soon as those feeds are current.
+Eight follow-ups are the limit; an exhausted chain fails visibly for operator
+action. Intermediate follow-ups do not repeat the initial stale-capture email.
+The job budget includes both this source wait and the separate benchmark wait.
+Unrelated stale feeds do not start a recovery chain. Hourly cron remains a fallback.
+
 Each build resolves the engine commit first, fetches all inputs at that immutable SHA,
 and verifies each Git blob hash before parsing. A failed API lookup or a failed download
 of a published history file fails the run; it cannot read as "unchanged" or silently
