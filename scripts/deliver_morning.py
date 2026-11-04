@@ -197,15 +197,16 @@ def main():
     if not args.send or action not in ('report','delay'): return
     if action=='report':
         write_bundle(report,out)
-        from verify_mail_layout import verify_html, verify_pdf
+        from verify_mail_layout import verify_html, verify_pdf, verify_attribution_content
         verify_html(out/'report.html')
         verify_pdf(out/'portfolio-review.pdf')
+        verify_attribution_content(report,out/'portfolio-review.pdf',out/'report.html')
         html=(out/'report.html').read_text(encoding='utf-8')
         from pypdf import PdfReader
         pdf=out/'portfolio-review.pdf'
         reader=PdfReader(pdf)
-        if len(reader.pages)!=2 or not all(page.extract_text().strip() for page in reader.pages):
-            raise ValueError('PDF must contain exactly two nonempty A4 pages')
+        if not 3 <= len(reader.pages) <= 6 or not all(page.extract_text().strip() for page in reader.pages):
+            raise ValueError('PDF must contain 3-6 nonempty A4 pages including full attribution')
         subject=f'Multi-Strategy | {report["performance"][0]["model"]:+.2%} | Close {expected}'
         deliver_once(ledger,expected+'-report',subject,report['body'],html,pdf,send_smtp,now)
     else:

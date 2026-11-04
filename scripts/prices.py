@@ -1,4 +1,4 @@
-"""Recent price panel for the current holdings (attribution + trend signals).
+"""Recent price panel for current-holding risk and trend signals.
 
 The engine's holdings_prices_1y.json covers the broad-market, commodity and
 thematic proxies (sleeves B and C) but NOT the US/Europe sector proxies
@@ -7,7 +7,7 @@ tradeAs ticker. A yfinance miss leaves a holding 'uncovered' (flagged on the
 dashboard) rather than blocking the build.
 
 Returns:
-  series : {ticker -> pd.Series of close} for return-over-window attribution.
+  series : {ticker -> pd.Series of close} for current-holding analytics.
   meta   : {ticker -> {vs_ma200, change_pct}} for the Signals tab.
 """
 from __future__ import annotations

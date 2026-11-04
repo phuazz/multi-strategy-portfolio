@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from render_morning import BarValue, GREEN, RED, bar_html, return_scale, excess, contribution_summary, contribution_html
+from render_morning import BarValue, GREEN, RED, bar_html, return_scale, excess, contribution_html
+from attribution_presentation import leaders, comparison_rows
 
 
 def test_positive_negative_use_symmetric_magnitude_scale():
@@ -33,39 +34,50 @@ def test_excess_can_be_positive_when_portfolio_loses():
 
 
 def sample(contributions):
-    attrs=[{'name':f'holding {i}','weight':1/len(contributions),'1D':{'contrib':v}} for i,v in enumerate(contributions)]
-    return {'attribution':attrs,'performance':[{'model':sum(contributions)-.001}],
-            'attribution_residual':-.001,'meta':{'built_at_utc':'2026-11-04T03:00:00Z'}}
+    attrs=[{'ticker':f'T{i}','name':f'holding {i}','strategies':['A'],'avg_weight':1/len(contributions),
+            'contrib':v,'known_contrib':v,'coverage':1} for i,v in enumerate(contributions)]
+    total=sum(contributions)
+    p={'status':'ok','start':'2026-11-02','end':'2026-11-03','issues':[],
+       'etf':attrs,'strategy':[{'code':'A','name':'Strategy A','contrib':total,'residual':0,'coverage':1}],
+       'model_return':total-.001,'etf_total':total,'strategy_total':total,
+       'etf_residual':-.001,'strategy_residual':-.001,'coverage':1}
+    return {'attribution':{'version':2,'asOf':'2026-11-03','method':'Historical holdings',
+                           'periods':{'1D':p,'1M':p}}}
 
 
-def test_contributions_rank_signs_separately_and_reconcile_all_rows():
+def test_contributors_rank_signs_separately_and_exclude_missing_prices():
     r=sample([.003,-.002,.001,-.004,.002,-.003,.004,-.001,0])
-    s=contribution_summary(r)
-    assert [a['1D']['contrib'] for a in s['positive'][:3]]==[.004,.003,.002]
-    assert [a['1D']['contrib'] for a in s['negative'][:3]]==[-.004,-.003,-.002]
-    assert s['positive_total']==pytest.approx(.01)
-    assert s['negative_total']==pytest.approx(-.01)
-    assert s['net']+s['residual']==pytest.approx(r['performance'][0]['model'])
+    s=leaders(r['attribution'],'1M')
+    assert [a['contrib'] for a in s['positive'][:3]]==[.004,.003,.002]
+    assert [a['contrib'] for a in s['negative'][:3]]==[-.004,-.003,-.002]
+    r['attribution']['periods']['1D']['etf'][0]['contrib']=None
     html=contribution_html(r)
-    assert html.count('height:4px;background:')==6
-    assert 'holding 2' not in html and 'holding 7' not in html
-    assert 'Reconciliation review' in html
-    assert '11.1% of NAV' in html
+    assert 'holding 0' not in html
+    assert '1D ETF contributors' in html and '1M ETF contributors' in html
+    assert 'not treated as zero' in html
 
 
 @pytest.mark.parametrize('values',[[.001,.002],[-.001,-.002],[0,0]])
 def test_one_sided_or_zero_contributions_never_invent_opposite_sign(values):
-    r=sample(values)
-    html=contribution_html(r)
-    assert html.count('height:4px;background:')==sum(v!=0 for v in values)
-    assert 'None in the supplied estimates.' in html
+    html=contribution_html(sample(values))
+    assert 'None with complete price coverage.' in html
 
 
 def test_bad_attribution_cannot_be_presented_as_reconciled():
     r=sample([.001,-.002])
-    r['attribution_residual']=0
+    r['attribution']['periods']['1D']['etf_residual']=0
     with pytest.raises(ValueError,match='reconcile'):
         contribution_html(r)
-    r['attribution'][0]['1D']['contrib']=float('nan')
+    r['attribution']['periods']['1D']['etf'][0]['known_contrib']=float('nan')
     with pytest.raises(ValueError,match='Non-finite'):
         contribution_html(r)
+
+
+def test_absent_position_is_zero_but_incomplete_period_is_missing():
+    from copy import deepcopy
+    a=sample([.001])['attribution']; a['periods']['1D']=deepcopy(a['periods']['1M'])
+    p=a['periods']['1D'];p['etf']=[];p['etf_total']=0;p['etf_residual']=p['model_return']
+    p['strategy'][0]['residual']=p['strategy_total']
+    assert comparison_rows(a,'etf')[0]['1D']==0
+    p['status']='unavailable'
+    assert comparison_rows(a,'etf')[0]['1D'] is None

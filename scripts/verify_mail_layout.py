@@ -55,7 +55,7 @@ def verify_html(path):
 def verify_pdf(path):
     import fitz
     doc=fitz.open(path)
-    assert len(doc)==2, f'PDF has {len(doc)} pages, expected 2'
+    assert 3 <= len(doc) <= 6, f'PDF has {len(doc)} pages, expected 3-6 for the complete holdings dossier'
     for page in doc:
         assert abs(page.rect.width-595.276)<1 and abs(page.rect.height-841.89)<1,'PDF is not A4'
         assert page.get_text().strip(),'Empty PDF page'
@@ -68,6 +68,32 @@ def verify_pdf(path):
         page.get_pixmap(matrix=fitz.Matrix(1.3,1.3)).save(str(Path(path).with_name(f'pdf-page-{page.number+1}.png')))
     assert sum(len(list(p.links())) for p in doc)>=2,'PDF source links missing'
     return {'pages':len(doc),'format':'A4','bounds':'pass','links':'pass'}
+
+
+def verify_attribution_content(report, pdf_path, html_path):
+    """Check the rendered PDF contains every historical holding and both horizons."""
+    import fitz
+    import re
+    from attribution_presentation import comparison_rows, bp, leaders
+    with fitz.open(pdf_path) as doc:
+        text=' '.join(' '.join(p.get_text() for p in doc).split())
+    html=Path(html_path).read_text(encoding='utf-8')
+    from html import unescape
+    email=' '.join(unescape(re.sub('<[^>]+>', ' ', html)).split())
+    attribution=report['attribution']
+    etfs=comparison_rows(attribution,'etf')
+    for row in etfs:
+        assert '('+row['ticker']+')' in text, f'PDF holding missing: {row["ticker"]}'
+        for horizon in ('1D','1M'):
+            assert bp(row[horizon]) in text, f'PDF contribution missing: {row["ticker"]} {horizon}'
+    for row in comparison_rows(attribution,'strategy'):
+        assert row['name'] in text and row['name'] in email, f'Strategy missing: {row["name"]}'
+    for horizon in ('1D','1M'):
+        assert horizon in text and horizon in email
+        for side in ('positive','negative'):
+            for row in leaders(attribution,horizon)[side][:3]:
+                assert row['ticker'] in email and bp(row['contrib']) in email, 'Email leader missing'
+    return {'etf_rows':len(etfs),'horizons':['1D','1M'],'rendered_content':'pass'}
 
 
 if __name__=='__main__':

@@ -10,28 +10,52 @@
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
 <style>
-:root{
-  --bg:#fafaf8; --bg2:#ffffff; --bg3:#f5f5f0; --bg4:#eeeee8; --bg-hover:#f0f0ea;
-  --bd:#e2e0d8; --bd2:#d5d3ca; --bd-strong:#c0beb5;
-  --t1:#1a1a18; --t2:#5c5c56; --t3:#8a8a82; --t4:#b0b0a8;
-  --g:#1a8754; --g2:#22a366; --g-bg:rgba(26,135,84,0.07); --g-bg2:rgba(26,135,84,0.14);
-  --r:#c0392b; --r2:#e74c3c; --r-bg:rgba(192,57,43,0.07); --r-bg2:rgba(192,57,43,0.14);
-  --b:#2563eb; --b2:#3b82f6; --b-bg:rgba(37,99,235,0.06); --b-bg2:rgba(37,99,235,0.12);
-  --a:#b45309; --a-bg:rgba(180,83,9,0.07); --a-bg2:rgba(180,83,9,0.14);
-  --p:#7c3aed; --p-bg:rgba(124,58,237,0.06);
-  --c:#0891b2; --c-bg:rgba(8,145,178,0.06);
-  /* -text variants per C:\dev\design.md — for TEXT; the values above are for
-     fills, borders and large type. At 11px the base colours fail WCAG AA. */
-  --g-text:#146c43; --r-text:#a93226; --b-text:#1d4ed8; --a-text:#92400e;
-  --p-text:#7c3aed; --c-text:#0e7490; --t3-text:#66665e;
-  --serif:'Instrument Serif',Georgia,serif;
-  --sans:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
-  --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
-  --shadow-sm:0 1px 2px rgba(0,0,0,0.04);
-  --shadow:0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md:0 4px 6px rgba(0,0,0,0.05),0 2px 4px rgba(0,0,0,0.04);
-  --radius:8px; --radius-lg:12px;
+:root {
+  /* surfaces */
+  --bg: #fafaf8;        /* page background — warm off-white */
+  --bg2: #ffffff;       /* cards, raised surfaces */
+  --bg3: #f5f5f0;       /* table headers, inset chips */
+  --bg4: #eeeee8;       /* progress tracks, deep insets */
+  --bg-hover: #f0f0ea;  /* row / cell hover */
+  /* borders */
+  --bd: #e2e0d8;        /* default hairline */
+  --bd2: #d5d3ca;       /* medium */
+  --bd-strong: #c0beb5; /* emphasis / axis lines */
+  /* text */
+  --t1: #1a1a18;        /* primary — near-black */
+  --t2: #5c5c56;        /* secondary */
+  --t3: #8a8a82;        /* tertiary / labels */
+  --t4: #b0b0a8;        /* disabled / faint */
+  /* semantic: green = gain/long, red = loss/short */
+  --g: #1a8754;  --g2: #22a366;  --g-bg: rgba(26,135,84,0.07);  --g-bg2: rgba(26,135,84,0.14);
+  --r: #c0392b;  --r2: #e74c3c;  --r-bg: rgba(192,57,43,0.07);  --r-bg2: rgba(192,57,43,0.14);
+  /* accents: blue = neutral/benchmark, amber = caution, purple = cost, cyan = info, pink = alt */
+  --b: #2563eb;  --b2: #3b82f6;  --b-bg: rgba(37,99,235,0.06);  --b-bg2: rgba(37,99,235,0.12);
+  --a: #b45309;  --a-bg: rgba(180,83,9,0.07);
+  --p: #7c3aed;  --p-bg: rgba(124,58,237,0.06);
+  --c: #0891b2;  --c-bg: rgba(8,145,178,0.06);
+  --pk: #be185d; --pk-bg: rgba(190,24,93,0.06);
+  /* -text variants — use these for TEXT; the values above are for fills,
+     borders, chart lines and large type. See "Contrast" below: several of the
+     base colours fail WCAG AA at label size, especially on their own tints. */
+  --g-text: #146c43;  --r-text: #a93226;  --b-text: #1d4ed8;  --a-text: #92400e;
+  --p-text: #7c3aed;  --c-text: #0e7490;  --pk-text: #be185d;
+  --t3-text: #66665e; /* muted label text — the lightest grey that still passes
+                         AA on a tinted tile; see "the muted tier" below */
+  /* type */
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  /* elevation */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.04);
+  /* radius */
+  --radius: 8px;
+  --radius-lg: 12px;
 }
+:root{--a-bg2:var(--a-bg)}
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:14px;line-height:1.5;
@@ -194,6 +218,18 @@ a{color:var(--b-text);text-decoration:none}
    do the scrolling. */
 .grid2>*,.grid3>*{min-width:0}
 @media(max-width:560px){.kpi-strip{grid-template-columns:repeat(2,1fr)}body{padding:0 12px 50px}.mh-left h1{font-size:27px}}
+
+/* Historical attribution dossier: semantic colours and readable full names. */
+.attr-prose{font-size:13px;line-height:1.6;max-width:58ch;margin-top:12px;overflow-wrap:anywhere}
+.attr-table{width:100%;table-layout:fixed}
+.attr-table th:first-child,.attr-table td:first-child{width:49%;white-space:normal;overflow-wrap:anywhere}
+.attr-table th,.attr-table td{font-size:12px;white-space:normal;padding:9px 6px}
+.attr-bar-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;border-bottom:1px solid var(--bd);padding:10px 0;font-size:13px}
+.attr-bar-value{text-align:right;min-width:0}
+.attr-track{height:8px;position:relative;background:var(--bg4);margin-top:7px}
+.attr-track:after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--bd-strong)}
+@media(max-width:560px){.attr-bar-row{grid-template-columns:1fr;gap:4px}.attr-table th,.attr-table td{font-size:11px;padding:9px 3px}.attr-table th:first-child,.attr-table td:first-child{width:43%}}
+
 </style>
 </head>
 <body>
@@ -218,7 +254,7 @@ a{color:var(--b-text);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-multi-strategy-portfolio.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1M', attrView:'theme', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1W', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
+const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
 const WIN_OV=['1W','1M','3M','6M','YTD','1Y','SI'], WIN_PERF=['1W','1M','3M','6M','YTD','1Y','3Y','SI'], WIN_RISK=['1W','1M','6M','YTD','1Y','3Y','SI'];
 let _blotter=[], _actions=[];   // Trades-tab filterable rows
@@ -691,7 +727,7 @@ function renderOverview(){
     </div>
     <div class="card">
       <div class="card-h"><div class="card-title">Recent contributors</div>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="card-note">weight × ETF return</span><div id="ovMoversBtns"></div></div></div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="card-note">historical holdings · contribution in bp</span><div id="ovMoversBtns"></div></div></div>
       <div id="ovMovers"></div>
     </div>`;
   renderPnlStrip('ovPnl');
@@ -700,7 +736,7 @@ function renderOverview(){
   buildEquityChart('ovEquity',{window:state.perfWindow,showBenchmarks:true,showDrawdown:true,showRegime:true,showLive:true});
   document.getElementById('ovDonutBtns').innerHTML = donutBtns();
   renderOvDonut();
-  document.getElementById('ovMoversBtns').innerHTML = windowBtns(state.ovMoversHz,['1D','1W','1M','YTD'],'setOvMoversHz');
+  document.getElementById('ovMoversBtns').innerHTML = windowBtns(state.ovMoversHz,['1D','1M'],'setOvMoversHz');
   renderMovers('ovMovers', state.ovMoversHz);
 }
 function setOvWin(k){ state.perfWindow=k; document.getElementById('ovWinBtns').innerHTML=windowBtns(k,WIN_OV,'setOvWin'); buildEquityChart('ovEquity',{window:k,showBenchmarks:true,showDrawdown:true,showRegime:true,showLive:true}); }
@@ -994,23 +1030,16 @@ async function _refreshIntradayInner(){
   }
 }
 
-function renderMovers(elId, hz){
-  const rows=DS.attribution.etf.filter(r=>r[hz]&&isNum(r[hz].contrib)).slice();
-  rows.sort((a,b)=> b[hz].contrib - a[hz].contrib);
-  const top=rows.slice(0,5), bot=rows.slice(-5).reverse();
-  const mk = r => `<tr><td>${sleeveChip(r.sleeve)} <strong>${esc(r.ticker)}</strong> <span class="muted" style="font-size:11px">${esc(r.name)}</span></td>
-    <td class="r num">${pct(r.weight,1)}</td><td class="r num ${signClass(r[hz].ret)}">${pctSigned(r[hz].ret)}</td>
-    <td class="r num ${signClass(r[hz].contrib)}">${pctSigned(r[hz].contrib,2)}</td></tr>`;
-  document.getElementById(elId).innerHTML = `<div class="grid2" style="gap:24px">
-    <div><div class="section-label">Top contributors</div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${top.map(mk).join('')}</tbody></table></div></div>
-    <div><div class="section-label">Detractors</div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Ret</th><th class="r">Contrib</th></tr></thead><tbody>${bot.map(mk).join('')}</tbody></table></div></div>
-  </div>`;
+function renderMovers(elId,hz){
+  const p=attrPeriod(hz),rows=p.etf.filter(r=>isNum(r.contrib));
+  const groups=[['Positive contributors',rows.filter(r=>r.contrib>0).sort((a,b)=>b.contrib-a.contrib).slice(0,5)],['Detractors',rows.filter(r=>r.contrib<0).sort((a,b)=>a.contrib-b.contrib).slice(0,5)]];
+  document.getElementById(elId).innerHTML=`<div class="grid2" style="gap:24px">${groups.map(([name,items])=>`<div><div class="section-label">${name}</div><table class="tbl attr-table"><thead><tr><th>ETF</th><th class="r">Contribution</th></tr></thead><tbody>${items.map(r=>`<tr><td><strong>${esc(r.name)} (${esc(r.ticker)})</strong></td><td class="r mono ${signClass(r.contrib)}">${attrBp(r.contrib)}</td></tr>`).join('')||'<tr><td colspan="2">None with complete prices.</td></tr>'}</tbody></table></div>`).join('')}</div><p class="attr-prose">${hz}: ${esc(p.start||'unavailable')} to ${esc(p.end||DS.meta.live_asOf)}. Historical holdings; verified ETF rows only. See Attribution for missing prices and reconciliation.</p>`;
 }
 
 function donutBtns(){ const o=[['sleeve','Sleeve'],['asset','Asset class'],['geo','Geography'],['theme','Theme']];
   return o.map(([k,l])=>`<button class="fbtn ${(state.ovDonut||'sleeve')===k?'active':''}" onclick="setOvDonut('${k}')">${l}</button>`).join(''); }
 function setOvDonut(d){ state.ovDonut=d; document.getElementById('ovDonutBtns').innerHTML=donutBtns(); renderOvDonut(); }
-function setOvMoversHz(k){ state.ovMoversHz=k; document.getElementById('ovMoversBtns').innerHTML=windowBtns(k,['1D','1W','1M','YTD'],'setOvMoversHz'); renderMovers('ovMovers',k); }
+function setOvMoversHz(k){ state.ovMoversHz=k; document.getElementById('ovMoversBtns').innerHTML=windowBtns(k,['1D','1M'],'setOvMoversHz'); renderMovers('ovMovers',k); }
 function ovDonutData(){
   const w=DS.weights, dim=state.ovDonut||'sleeve', m={};
   if(dim==='sleeve'){ Object.keys(w.by_sleeve).forEach(k=>{ if((w.by_sleeve[k]||0)>1e-4){ const nm=(w.sleeve_meta[k]||{}).name||k; m[nm]={v:w.by_sleeve[k],c:SLEEVE_COLORS[k]||'#8a8a82'}; } }); }
@@ -1362,115 +1391,73 @@ function buildHeatmap(){
 }
 
 /* ============================ ATTRIBUTION ============================ */
+function attrBp(v){return isNum(v)?(v>0?'+':'')+(v*10000).toFixed(1)+' bp':'—';}
+function attrPeriod(h){return (DS.attribution.periods||{})[h]||{status:'unavailable',etf:[],strategy:[],issues:['Historical attribution awaits a verified build.']};}
+function attrCompare(kind){
+  const key=kind==='etf'?'ticker':'code', periods=['1D','1M'];
+  const maps=Object.fromEntries(periods.map(h=>[h,Object.fromEntries(attrPeriod(h)[kind].map(r=>[r[key],r]))]));
+  return [...new Set([...Object.keys(maps['1D']),...Object.keys(maps['1M'])])].map(id=>{
+    const base=maps['1M'][id]||maps['1D'][id], row={...base,id};
+    periods.forEach(h=>{row[h]=attrPeriod(h).status==='unavailable'?null:maps[h][id]?maps[h][id].contrib:0;row[h+'Coverage']=maps[h][id]?.coverage??1;});
+    row.monthWeight=attrPeriod('1M').status==='unavailable'?null:(maps['1M'][id]?.avg_weight||0);
+    return row;
+  });
+}
+function attrStrategyNames(codes){
+  const names=Object.fromEntries(attrCompare('strategy').map(r=>[r.code,r.name]));
+  return codes.map(c=>names[c]||c).join(' / ');
+}
+function attrBridge(h){
+  const p=attrPeriod(h);
+  if(p.status==='unavailable')return `<div class="card"><div class="card-title">${h}: unavailable</div><p class="attr-prose">${esc((p.issues||[]).join('; '))}</p></div>`;
+  return `<div class="card"><div class="card-h"><div class="card-title">${h} reconciliation</div><span class="pill ${p.status==='review'?'pill-health-warn':'pill-health-ok'}">${p.status==='review'?'Review required':'Reconciled'}</span></div>
+    <p class="attr-prose">${esc(p.start)} to ${esc(p.end)} · USD · ${p.observations} sessions</p>
+    <table class="tbl attr-table"><tbody><tr><td>Known ETF marks</td><td class="r mono">${attrBp(p.etf_total)}</td></tr>
+    <tr><td>ETF unexplained residual</td><td class="r mono">${attrBp(p.etf_residual)}</td></tr>
+    <tr class="sum"><td>Official model return</td><td class="r mono ${signClass(p.model_return)}">${attrBp(p.model_return)}</td></tr>
+    <tr><td>Known strategy contributions</td><td class="r mono">${attrBp(p.strategy_total)}</td></tr>
+    <tr><td>Strategy unexplained residual</td><td class="r mono">${attrBp(p.strategy_residual)}</td></tr></tbody></table>
+    <p class="attr-prose">Price coverage: ${(p.coverage*100).toFixed(1)}% of held weight-days. ${esc((p.issues||[]).join('; '))}</p></div>`;
+}
 function renderAttribution(){
   const el=document.getElementById('tabContent');
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-h">
-        <div class="card-title">Contribution to return</div>
-        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-          <div class="fbtns" id="attrViewBtns">
-            <button class="fbtn ${state.attrView==='etf'?'active':''}" onclick="setAttrView('etf')">By ETF</button>
-            <button class="fbtn ${state.attrView==='theme'?'active':''}" onclick="setAttrView('theme')">By theme</button>
-            <button class="fbtn ${state.attrView==='sleeve'?'active':''}" onclick="setAttrView('sleeve')">By sleeve</button>
-          </div>
-          <div id="attrHzBtns"></div>
-        </div>
-      </div>
-      <div id="attrChart" class="chart" style="height:300px"></div>
-      <div class="card-note" style="margin-top:6px">${esc(DS.attribution.note)}${DS.attribution.uncovered.length?' Uncovered (no price feed): '+DS.attribution.uncovered.join(', ')+'.':''}</div>
-    </div>
-    <div class="grid2">
-      <div class="card"><div class="card-h"><div class="card-title">Risk vs return</div><div class="card-note">bubble = weight · follows view &amp; horizon</div></div>
-        <div id="attrScatter" class="chart" style="height:300px"></div>
-        <div class="card-note" style="margin-top:6px">Annualised volatility (x) vs the selected horizon's return (y); points follow the ETF/theme/sleeve view, bubble size is weight, colour is sleeve. Theme volatility is a weight-average of members (approximate). ${esc((DS.risk||{}).note||'')}</div></div>
-      <div class="card"><div class="card-title" style="margin-bottom:10px" id="attrTblTitle">Detail</div><div style="overflow-x:auto"><table class="tbl" id="attrTbl"></table></div></div>
-    </div>`;
-  document.getElementById('attrHzBtns').innerHTML = windowBtns(state.attrHorizon,['1D','1W','1M','YTD','SI'],'setAttrHz');
-  buildAttrChart(); buildRiskScatter(); buildAttrTable();
+  if(DS.attribution.version!==2){el.innerHTML='<div class="card">Historical attribution awaits the next verified dataset build.</div>';return;}
+  const strategy=attrCompare('strategy');
+  el.innerHTML=`<div class="card"><div class="card-h"><div class="card-title">Which strategies contributed?</div><span class="card-note">USD · 1D and trailing 1M · basis points</span></div>
+    <table class="tbl attr-table"><thead><tr><th>Strategy</th><th class="r">1D</th><th class="r">1M</th></tr></thead><tbody>${strategy.map(r=>`<tr><td>${esc(r.name)}</td>${['1D','1M'].map(h=>`<td class="r mono ${signClass(r[h])}">${attrBp(r[h])}${r[h+'Coverage']<.999999?' *':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <p class="attr-prose">Strategy contributions use published net sleeve NAVs and historical allocations; any live tail uses fixed-book marks. *Underlying ETF price verification is incomplete; a published zero is not proof of a fresh price. 100 bp = 1 percentage point.</p></div>
+    <div class="grid2" style="margin-top:18px">${attrBridge('1D')}${attrBridge('1M')}</div>
+    <div class="card" style="margin-top:18px"><div class="card-h"><div class="card-title">Historical contribution to return</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap"><div class="fbtns"><button class="fbtn ${state.attrView==='etf'?'active':''}" onclick="setAttrView('etf')">By ETF</button><button class="fbtn ${state.attrView==='sleeve'?'active':''}" onclick="setAttrView('sleeve')">By strategy</button><button class="fbtn ${state.attrView==='theme'?'active':''}" onclick="setAttrView('theme')">By theme</button></div><div>${windowBtns(state.attrHorizon,['1D','1M'],'setAttrHz')}</div></div></div>
+    <p id="attrWindow" class="attr-prose"></p><div id="attrChart"></div><p class="attr-prose">Green = positive contribution; red = negative contribution. Each side uses the same magnitude scale. Missing marks are unavailable, not zero. Residuals are separate from the bars.</p></div>
+    <div class="card" style="margin-top:18px"><div class="card-title" style="margin-bottom:12px">ETF detail · includes exited positions</div>
+    <table class="tbl attr-table" id="attrTbl"></table><p class="attr-prose">Avg. wt is the mean beginning-of-session NAV weight over 1M. A dash means incomplete price coverage; a zero means no contribution or no holding in that period. The bridge includes known partial marks even when the full-period ETF figure is unavailable.</p></div>
+    <div class="card" style="margin-top:18px"><div class="card-title">Calculation basis</div><p class="attr-prose">${esc(DS.attribution.method)} This is absolute model contribution, not attribution of benchmark excess. FX is included in USD marks; prices are carried only across verified exchange holidays. Residuals of at least 5 bp are flagged symmetrically.</p><p class="attr-prose">Source: engine historical holdings and NAV; adjusted ETF prices. NAV ${esc(DS.attribution.asOf)}. Prices acquired ${esc(DS.attribution.prices_acquired_at_utc)}. Source commit ${esc(DS.attribution.source_commit)}.</p></div>`;
+  buildAttrChart();buildAttrTable();
 }
-function setAttrView(v){ state.attrView=v; renderAttribution(); }
-function setAttrHz(k){ state.attrHorizon=k; document.getElementById('attrHzBtns').innerHTML=windowBtns(k,['1D','1W','1M','YTD','SI'],'setAttrHz'); buildAttrChart(); buildRiskScatter(); buildAttrTable(); }
+function setAttrView(v){state.attrView=v;renderAttribution();}
+function setAttrHz(h){state.attrHorizon=h;renderAttribution();}
 function attrRows(){
-  const hz=state.attrHorizon;
-  if(state.attrView==='sleeve'){
-    return Object.entries(DS.attribution.sleeve).map(([code,r])=>({label:code,name:r.name,color:SLEEVE_COLORS[code]||'#888',
-      ret:(r[hz]||{}).ret, contrib:(r[hz]||{}).contrib, alloc:r.alloc})).filter(r=>isNum(r.contrib));
-  }
+  const p=attrPeriod(state.attrHorizon);
+  if(state.attrView==='sleeve')return p.strategy.map(r=>({...r,label:r.name,sub:r.coverage<.999999?'Published net return; ETF price coverage incomplete':'Published net strategy return'}));
   if(state.attrView==='theme'){
-    const g={};
-    DS.attribution.etf.forEach(r=>{ const h=r[hz]||{}; if(!isNum(h.contrib)) return; const t=r.theme||'Other';
-      g[t]=g[t]||{label:t,name:t,weight:0,contrib:0,_sl:{}}; g[t].weight+=r.weight||0; g[t].contrib+=h.contrib;
-      g[t]._sl[r.sleeve]=(g[t]._sl[r.sleeve]||0)+(r.weight||0); });
-    return Object.values(g).map(x=>{ x.ret=x.weight?x.contrib/x.weight:null;
-      const dom=Object.entries(x._sl).sort((a,b)=>b[1]-a[1])[0]; x.color=SLEEVE_COLORS[dom&&dom[0]]||'#2563eb'; return x; });
+    const groups={};p.etf.forEach(r=>{const name=r.theme||'Other';const g=groups[name]||(groups[name]={label:name,contrib:0,complete:true});g.contrib+=r.known_contrib;g.complete=g.complete&&isNum(r.contrib);});
+    return Object.values(groups).map(g=>({...g,contrib:g.complete?g.contrib:null,sub:'Historical holdings grouped by theme'}));
   }
-  return DS.attribution.etf.map(r=>({label:r.ticker,name:r.name,sleeve:r.sleeve,color:SLEEVE_COLORS[r.sleeve]||'#888',
-    ret:(r[hz]||{}).ret, contrib:(r[hz]||{}).contrib, weight:r.weight, vol:r.vol, risk_pct:r.risk_pct, ret_1y:r.ret_1y})).filter(r=>isNum(r.contrib));
+  return p.etf.map(r=>({...r,label:r.name+' ('+r.ticker+')',sub:attrStrategyNames(r.strategies)+(r.end_weight<.000001?' · exited':'')}));
 }
 function buildAttrChart(){
-  const rows=attrRows().sort((a,b)=>b.contrib-a.contrib);
-  plot(document.getElementById('attrChart'),[{type:'bar',orientation:'h',
-    x:rows.map(r=>r.contrib*100).reverse(), y:rows.map(r=>r.label).reverse(),
-    marker:{color:rows.map(r=>r.color).reverse()},
-    hovertemplate:'%{y}<br>contrib %{x:.2f}%<extra></extra>'}],
-    baseLayout({margin:{t:8,b:30,l:96,r:14},xaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'},yaxis:{tickfont:{size:11},automargin:true},hovermode:'closest'}));
-}
-function volOf(arr){ const r=arrReturns((arr||[]).slice(-253).filter(isNum)); if(r.length<2) return null;
-  const m=mean(r); return Math.sqrt(mean(r.map(x=>(x-m)**2)))*Math.sqrt(252); }
-function attrScatterNodes(){
-  // Nodes follow the contribution view (ETF/theme/sleeve); y = selected horizon
-  // return, x = annualised volatility (a ~1y risk characteristic).
-  const hz=state.attrHorizon, v=state.attrView, rk=(DS.risk||{}).by_ticker||{};
-  const etfRet=e=> hz==='SI' ? e.ret_1y : (e[hz]||{}).ret;   // ETFs have no since-inception price → use 1Y
-  if(v==='sleeve'){
-    return Object.entries(DS.attribution.sleeve).map(([code,r])=>({label:code,color:SLEEVE_COLORS[code]||'#888',
-      x:volOf((DS.equity.sleeves||{})[code]), y:(r[hz]||{}).ret, size:r.alloc}));
-  }
-  if(v==='theme'){
-    const g={};
-    DS.attribution.etf.forEach(e=>{ const t=e.theme||'Other', w=e.weight||0, ret=etfRet(e), vol=(rk[e.ticker]||{}).vol;
-      g[t]=g[t]||{label:t,w:0,rw:0,vw:0,_sl:{}}; g[t].w+=w; if(isNum(ret))g[t].rw+=w*ret; if(isNum(vol))g[t].vw+=w*vol;
-      g[t]._sl[e.sleeve]=(g[t]._sl[e.sleeve]||0)+w; });
-    return Object.values(g).map(x=>{ const dom=Object.entries(x._sl).sort((a,b)=>b[1]-a[1])[0];
-      return {label:x.label,color:SLEEVE_COLORS[dom&&dom[0]]||'#2563eb',x:x.w?x.vw/x.w:null,y:x.w?x.rw/x.w:null,size:x.w}; });
-  }
-  return DS.attribution.etf.map(e=>({label:e.ticker,color:SLEEVE_COLORS[e.sleeve]||'#888',
-    x:(rk[e.ticker]||{}).vol, y:etfRet(e), size:e.weight}));
-}
-function buildRiskScatter(){
-  const el=document.getElementById('attrScatter'); if(!el) return;
-  const nodes=attrScatterNodes().filter(n=>isNum(n.x)&&isNum(n.y));
-  if(!nodes.length){ el.innerHTML='<div class="muted" style="padding:50px;text-align:center">No risk/return data for this view.</div>'; return; }
-  const hz=state.attrHorizon; const yLabel=((state.attrView!=='sleeve')&&hz==='SI')?'1-year return':hz+' return';
-  plot(el,[{type:'scatter',mode:'markers+text',x:nodes.map(n=>n.x*100),y:nodes.map(n=>n.y*100),
-    text:nodes.map(n=>n.label),textposition:'top center',textfont:{size:11,color:'#5c5c56'},
-    marker:{size:nodes.map(n=>Math.max(9,Math.sqrt(Math.abs(n.size||0))*95)),color:nodes.map(n=>n.color),opacity:0.72,line:{color:'#fff',width:1}},
-    customdata:nodes.map(n=>(n.size||0)*100),
-    hovertemplate:'<b>%{text}</b><br>vol %{x:.0f}% · ret %{y:.1f}%<br>weight %{customdata:.1f}%<extra></extra>'}],
-    baseLayout({showlegend:false,hovermode:'closest',
-      xaxis:{title:{text:'Annualised volatility',font:{size:11}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:false},
-      yaxis:{title:{text:yLabel,font:{size:11}},ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},zeroline:true,zerolinecolor:'#cfcdc4'}}));
+  const p=attrPeriod(state.attrHorizon),rows=attrRows().sort((a,b)=>(b.contrib??-Infinity)-(a.contrib??-Infinity));
+  document.getElementById('attrWindow').textContent=state.attrHorizon+': '+(p.start||'unavailable')+' to '+(p.end||DS.meta.live_asOf)+' · USD';
+  const scale=Math.max(.000001,...rows.filter(r=>isNum(r.contrib)).map(r=>Math.abs(r.contrib)));
+  document.getElementById('attrChart').innerHTML=rows.map(r=>{
+    const value=r.contrib,negative=isNum(value)&&value<0,fill=isNum(value)?Math.abs(value)/scale*50:0;
+    return `<div class="attr-bar-row"><div><strong>${esc(r.label)}</strong><div class="muted" style="font-size:11px">${esc(r.sub)}</div></div><div class="attr-bar-value"><span class="mono ${signClass(value)}">${attrBp(value)}</span><div class="attr-track" aria-hidden="true"><div style="position:absolute;height:8px;left:${negative?50-fill:50}%;width:${fill}%;background:var(${negative?'--r':'--g'})"></div></div></div></div>`;
+  }).join('')||'<p class="attr-prose">No verified contribution rows for this period.</p>';
 }
 function buildAttrTable(){
-  const hz=state.attrHorizon, v=state.attrView; const rows=attrRows().sort((a,b)=>b.contrib-a.contrib);
-  document.getElementById('attrTblTitle').textContent=(v==='sleeve'?'Sleeve':v==='theme'?'Theme':'ETF')+' contribution — '+hz;
-  let head, body, span;
-  if(v==='etf'){
-    head=`<thead><tr><th>Holding</th><th class="r">Wt</th><th class="r">Risk%</th><th class="r">Vol</th><th class="r">Ret ${hz}</th><th class="r">Contrib</th></tr></thead>`;
-    body=rows.map(r=>`<tr><td>${sleeveChip(r.sleeve)} <strong>${esc(r.label)}</strong><br><span class="muted" style="font-size:11px">${esc(r.name)}</span></td>
-      <td class="r num">${pct(r.weight,1)}</td><td class="r num">${pct(r.risk_pct,1)}</td><td class="r num">${pct(r.vol,0)}</td>
-      <td class="r num ${signClass(r.ret)}">${pctSigned(r.ret)}</td><td class="r num ${signClass(r.contrib)}">${pctSigned(r.contrib,2)}</td></tr>`).join(''); span=4;
-  } else {
-    const isS=v==='sleeve';
-    head=`<thead><tr><th>${isS?'Sleeve':'Theme'}</th><th class="r">${isS?'Alloc':'Weight'}</th><th class="r">Return</th><th class="r">Contribution</th></tr></thead>`;
-    body=rows.map(r=>`<tr><td>${isS?sleeveChip(r.label)+' '+esc(r.name):'<span class="dot" style="background:'+(r.color||'#888')+'"></span>'+esc(r.label)}</td>
-      <td class="r num">${pct(isS?r.alloc:r.weight,isS?0:1)}</td><td class="r num ${signClass(r.ret)}">${pctSigned(r.ret)}</td>
-      <td class="r num ${signClass(r.contrib)}">${pctSigned(r.contrib,2)}</td></tr>`).join(''); span=2;
-  }
-  const tot=rows.reduce((a,r)=>a+r.contrib,0);
-  document.getElementById('attrTbl').innerHTML=head+'<tbody>'+body+
-    `<tr class="sum"><td>Total</td><td colspan="${span}"></td><td class="r num ${signClass(tot)}">${pctSigned(tot,2)}</td></tr></tbody>`;
+  const rows=attrCompare('etf').sort((a,b)=>Math.abs(b['1M']??b['1D']??0)-Math.abs(a['1M']??a['1D']??0));
+  document.getElementById('attrTbl').innerHTML=`<thead><tr><th>ETF / strategy</th><th class="r">Avg. wt 1M</th><th class="r">1D</th><th class="r">1M</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>${esc(r.name)} (${esc(r.ticker)})</strong><div class="muted" style="font-size:11px">${esc(attrStrategyNames(r.strategies))}${r.price_symbol!==r.ticker?' · priced as '+esc(r.price_symbol):''}</div></td><td class="r mono">${pct(r.monthWeight,1)}</td>${['1D','1M'].map(h=>`<td class="r mono ${signClass(r[h])}">${attrBp(r[h])}</td>`).join('')}</tr>`).join('')}</tbody>`;
 }
 
 /* ============================ placeholder tabs (filled below) ============================ */

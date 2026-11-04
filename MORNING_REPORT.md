@@ -44,9 +44,10 @@ the claim only after verifying it did not send. Do not blindly rerun an uncertai
 ## Report and publication checks
 
 The HTML email contains the session/YTD/drawdown figures, matched-period returns,
-a compact risk table, positioning and indicative contributors. The two-page A4 PDF
-adds full risk ratios, benchmark-relative statistics, valuation windows, sources and
-methodology. Both derive from the same report object. Source and dashboard links are
+a compact risk table, positioning and historical 1D/1M attribution. The A4 PDF
+adds full risk ratios, benchmark-relative statistics, every historical ETF row,
+valuation windows, sources and methodology (normally four pages; guarded at three
+to six). Both derive from the same report object. Source and dashboard links are
 clickable. The plain-text alternative remains available for email clients.
 
 Colour and data bars support scanning: green/red for signed returns and contributions,
@@ -57,18 +58,24 @@ denominators stated. Missing risk shares have no bar. The drawdown track ends at
 historical maximum, labelled as context rather than a risk limit. A delayed-data notice
 uses amber. Colours do not substitute for numbers or state labels.
 
-Holding contributions use current weights and are explicitly approximate. Their
-residual is shown; quote-date and FX differences are not attributed to trading skill.
+Holding contributions use historical published model holdings, effective after
+their fill-date close. Daily USD contributions are linked using prior official NAV
+divided by period-start NAV. Sold positions remain included. ETF marks are gross
+of trading costs; strategies use published net sleeve returns through the engine
+anchor and fixed-book marks thereafter. Separate residuals reconcile each level
+to the official model return. See [ATTRIBUTION.md](ATTRIBUTION.md).
 The primary comparator is labelled S&P 500 TR proxy (SPY adjusted close), with an
 explicit arithmetic excess-return column in percentage points for every period.
 This is a fund total-return proxy, not literal SPX price return or exact index return.
 The global 60/40 comparator remains in the PDF. Positive and negative contribution
-panels sit immediately below performance in the email, showing the largest three
-holdings in each direction on a common basis-point scale. Group totals include all
-covered holdings. The PDF shows two per direction. Estimates plus residual must
-reconcile to model return; a mismatch blocks rendering. Absolute residuals of at
-least 5 bp are flagged for review symmetrically. Zero-contribution weight is disclosed
-because zero is not proof of a fresh quote. These are absolute-return estimates,
+panels show the largest three verified holdings in each direction for both 1D and
+1M on a common basis-point scale within each period. A strategy table compares the
+two horizons. The PDF includes all ETF names and owning strategies, monthly average
+weights and both contributions. Missing open-session prices produce a dash, never
+a fabricated zero; known partial marks remain in the reconciliation bridge. Coverage
+is disclosed as the share of held weight-days. Rows plus residual must reconcile
+to model return; a mismatch blocks rendering. Absolute residuals of at least 5 bp
+are flagged for review symmetrically. These are absolute-return contributions,
 not attribution of benchmark excess; no cause is assigned to the residual.
 Backtested history, engine-labelled out-of-sample performance and a live extension
 are kept distinct. Risk statistics use the published common-date panel and its
@@ -76,7 +83,8 @@ calendar gaps are disclosed.
 
 Before each send, the workflow runs the delivery tests, the vendored vault static
 HTML checker, a real headless Chromium check at 390/844/768/1280 pixels, and PDF
-page-count, A4, text-bounds and hyperlink guards. A layout failure blocks sending.
+page-count, A4, text-bounds, hyperlink and rendered-attribution content guards.
+A layout or content failure blocks sending.
 The evidence is retained as a GitHub Actions artifact for seven days. Evidence has
 no recipient addresses or credentials. `data/` remains ignored by Git.
 

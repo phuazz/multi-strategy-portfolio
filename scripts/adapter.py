@@ -313,69 +313,6 @@ def build_stats(model_bt, model_full, overlay, registry, benchmarks) -> dict:
     }
 
 
-# --- attribution -----------------------------------------------------------
-def _ret_ytd(s: pd.Series) -> float | None:
-    if len(s) < 2:
-        return None
-    yr_start = pd.Timestamp(year=s.index[-1].year, month=1, day=1)
-    prior = s[s.index < yr_start]
-    base = prior.iloc[-1] if len(prior) else s.iloc[0]
-    return float(s.iloc[-1] / base - 1.0)
-
-
-def build_attribution(equity, weights, prices, registry, risk_by_ticker=None, ref_date=None) -> dict:
-    idx = pd.to_datetime(equity["dates"])
-    sleeves = registry["sleeves"]
-    tilt_on = weights["tilt_on"]
-    sref = idx[-1]                                   # sleeves: their own (backtest) last date
-    sanc = _anchors(sref)
-    eref = pd.Timestamp(ref_date) if ref_date else sref   # ETFs/benchmarks: global (live) date
-    eanc = _anchors(eref)
-
-    # Sleeve-level: allocation-weighted sleeve return (approximate decomposition).
-    sleeve_attr = {}
-    for code, eq_list in equity["sleeves"].items():
-        s = pd.Series(eq_list, index=idx, dtype="float64").dropna()
-        cfg = sleeves[code]
-        alloc = cfg.get("alloc_tilt" if tilt_on else "alloc", 0.0)
-        row = {"name": cfg["name"], "alloc": _r(alloc, 4), "color": cfg.get("color")}
-        for hk in HZ_KEYS:
-            rr = metrics.windowed_return(s, sref, sanc[hk])
-            row[hk] = {"ret": _r(rr, 5), "contrib": _r(alloc * rr, 5) if rr is not None else None}
-        ry, rs = _ret_ytd(s), float(s.iloc[-1] / s.iloc[0] - 1.0)
-        row["YTD"] = {"ret": _r(ry, 5), "contrib": _r(alloc * ry, 5) if ry is not None else None}
-        row["SI"] = {"ret": _r(rs, 5), "contrib": _r(alloc * rs, 5)}
-        sleeve_attr[code] = row
-
-    # ETF-level: current weight x proxy return over a calendar-anchored window.
-    etf_attr = []
-    for r in weights["rows"]:
-        w = r["weight"] or 0.0
-        s = prices.get(r["ticker"])
-        if s is None:
-            s = prices.get(r["tradeAs"])
-        if s is None or w <= 1e-4:
-            continue
-        row = {"ticker": r["ticker"], "name": r["name"], "sleeve": r["sleeve"],
-               "theme": r["theme"], "weight": _r(w, 5), "covered": True}
-        rk = (risk_by_ticker or {}).get(r["ticker"])
-        if rk:
-            row["vol"], row["risk_pct"], row["ret_1y"] = rk["vol"], rk["risk_pct"], rk["ret_1y"]
-        for hk in HZ_KEYS:
-            rr = metrics.windowed_return(s, eref, eanc[hk])
-            row[hk] = {"ret": _r(rr, 5), "contrib": _r(w * rr, 5) if rr is not None else None}
-        ry = _ret_ytd(s)
-        row["YTD"] = {"ret": _r(ry, 5), "contrib": _r(w * ry, 5) if ry is not None else None}
-        etf_attr.append(row)
-    # Holdings with no price coverage (sector/Europe proxies) — flag, do not hide.
-    uncovered = [r["ticker"] for r in weights["rows"]
-                 if (r["weight"] or 0) > 1e-4
-                 and r["ticker"] not in prices and r["tradeAs"] not in prices]
-    return {"sleeve": sleeve_attr, "etf": etf_attr, "uncovered": uncovered,
-            "note": "Sleeve contribution = sleeve allocation x sleeve return (approximate; "
-                    "residual is overlay/tilt/rebalance). ETF contribution uses current weight."}
-
-
 # --- signals ---------------------------------------------------------------
 def build_signals(weights, prices_meta, registry) -> dict:
     """Per-sleeve 'why these weights': current holdings + trend context where available."""

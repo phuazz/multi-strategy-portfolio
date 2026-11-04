@@ -120,6 +120,7 @@ def build(d, now):
     performance, risk_rows, relative_rows = [], [], []
     anchors = {'1 session': s.index[-2],
                '1 week': end - pd.Timedelta(days=7),
+               '1 month': end - pd.DateOffset(months=1),
                'MTD': end.to_period('M').start_time - pd.Timedelta(days=1),
                'YTD': end.to_period('Y').start_time - pd.Timedelta(days=1),
                '1 year': end - pd.DateOffset(years=1)}
@@ -176,23 +177,32 @@ def build(d, now):
     risk = sorted(d.get('risk',{}).get('holdings',[]), key=lambda x: x.get('risk_pct',0), reverse=True)[:3]
     if risk:
         lines.append('Largest estimated risk shares (current-weight historical covariance): ' + '; '.join(f'{r["name"]} {r["risk_pct"]:.1%}' for r in risk) + '.')
-    lines += ['', f'4. Indicative attribution supplied in the build {meta["built_at_utc"]}']
-    attrs = d.get('attribution',{}).get('etf',[])
-    covered = [a for a in attrs if a.get('covered') and a.get('1D',{}).get('contrib') is not None]
-    if covered:
-        for title, rows in [('Positive contributors',sorted([a for a in covered if a['1D']['contrib']>0],key=lambda x:-x['1D']['contrib'])[:3]),('Negative contributors',sorted([a for a in covered if a['1D']['contrib']<0],key=lambda x:x['1D']['contrib'])[:3])]:
-            lines.append(title + ': ' + ('; '.join(f'{a["name"]} {a["1D"]["contrib"]*10000:+.1f} bp' for a in rows) or 'none') + '.')
-        residual = float(s.iloc[-1]/s.iloc[-2]-1)-sum(a['1D']['contrib'] for a in covered)
-        positive=sum(a['1D']['contrib'] for a in covered if a['1D']['contrib']>0)
-        negative=sum(a['1D']['contrib'] for a in covered if a['1D']['contrib']<0)
-        flat_weight=sum(a.get('weight',0) for a in covered if a['1D']['contrib']==0)
-        lines.append(f'All covered positives {positive*10000:+.1f} bp; negatives {negative*10000:+.1f} bp; net {(positive+negative)*10000:+.1f} bp; residual {residual*10000:+.1f} bp. Review residuals of 5 bp or more in either direction. Rounding may affect displayed sums. 100 bp = 1 percentage point.')
-        lines.append(f'Reported zero contributions cover {flat_weight:.1%} of NAV; a zero does not prove a fresh quote. Current-weight approximation; not realised holdings attribution or attribution of benchmark excess. Quote dates/FX, rebalancing and coverage can differ; no causal interpretation of the residual.')
+    lines += ['', f'4. Historical model attribution through {end:%Y-%m-%d}']
+    attribution=d.get('attribution',{})
+    if attribution.get('version')==2:
+        from historical_attribution import validate as validate_attribution
+        validate_attribution(attribution,s)
+        lines.append(attribution['method'])
+        for hz in ('1D','1M'):
+            p=attribution['periods'][hz]
+            lines.append(f'{hz}: {p["start"]} to {p["end"]}; {p["status"]}.')
+            if p['status']=='unavailable':
+                lines.extend(p['issues']);continue
+            lines.append('Strategies: '+'; '.join(a['name']+' '+('-' if a['contrib'] is None else f'{a["contrib"]*10000:+.1f} bp') for a in p['strategy']))
+            available=[a for a in p['etf'] if a['contrib'] is not None]
+            for title,rows in [('Positive ETFs',sorted([a for a in available if a['contrib']>0],key=lambda a:-a['contrib'])[:3]),('Negative ETFs',sorted([a for a in available if a['contrib']<0],key=lambda a:a['contrib'])[:3])]:
+                lines.append(title+': '+('; '.join(f'{a["name"]} ({a["ticker"]}) {a["contrib"]*10000:+.1f} bp' for a in rows) or 'none verified'))
+            lines.append(f'Known ETF contributions {p["etf_total"]*10000:+.1f} bp + residual {p["etf_residual"]*10000:+.1f} bp = model {p["model_return"]*10000:+.1f} bp. Strategy residual {p["strategy_residual"]*10000:+.1f} bp. Price coverage {p["coverage"]:.1%} of held weight-days.')
+            lines.extend(p['issues'])
+    else:
+        attribution={'version':2,'asOf':str(end.date()),'method':'Historical attribution awaits the next verified dataset build.',
+                     'periods':{h:{'start':None,'end':str(end.date()),'status':'unavailable','issues':['Historical attribution is not yet published'],'etf':[],'strategy':[]} for h in ('1D','1M')}}
+        lines.append(attribution['method'])
     lines += ['', '5. Exceptions and basis',
               'No trade instructions. Review delayed data, concentration and any pending model changes before acting.',
               f'Dataset health: {d["health"]["level"]}. Source commit: {meta["source_commit"]}.',
               'Volatility, Sharpe and tracking error use daily observations and 252 sessions/year; CAGR uses actual calendar days. Sharpe uses daily return less the published Treasury-bill proxy; Sortino uses the root mean square of negative excess returns over ALL observations. Both depend on proxy data quality. Calmar is CAGR / absolute maximum drawdown. Information ratio uses arithmetic active daily return / tracking error.',
-              'Statistics use the published common-date panel; gaps can span more than one exchange session, so annualised risk statistics are approximations. No missing benchmark observations are forward-filled. Fund proxies include their own embedded expenses. Attribution has no independent per-row valuation timestamp and is indicative only.',
+              'Statistics use the published common-date panel; gaps can span more than one exchange session, so annualised risk statistics are approximations. No missing benchmark observations are forward-filled. Fund proxies include their own embedded expenses. Attribution uses historical model holdings and USD-converted adjusted prices; incomplete marks and unexplained residuals remain explicit. This is absolute contribution, not benchmark-relative attribution or actual-account P&L.',
               f'Cost assumption in source: {meta.get("cost_assumption_bps","unavailable")}bp; hypothetical performance, with no verification of actual fills, account costs or capacity.',
               'Historical statistics are descriptive, not evidence of future returns. Dates are source-derived and library-checked; flag any disputed valuation date for confirmation.',
               f'Dashboard: {PAGE}', f'Data: {URL}']
@@ -202,7 +212,7 @@ def build(d, now):
             'performance':performance,'risk_rows':risk_rows,'relative_rows':relative_rows,
             'current_dd':rs['current_dd'],'underwater_days':rs['underwater_days'],
             'meta':meta,'regime':regime,'weights':weights,'risk_contributors':risk,
-            'attribution':covered,'attribution_residual':residual if covered else None}
+            'attribution':attribution}
 
 
 def main():

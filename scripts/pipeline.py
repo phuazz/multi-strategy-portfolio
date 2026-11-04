@@ -14,6 +14,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -22,6 +23,7 @@ import metrics  # noqa: E402
 import prices as prices_mod  # noqa: E402
 import validate  # noqa: E402
 import valuation  # noqa: E402
+import historical_attribution  # noqa: E402
 from benchmarks import build_benchmarks_awaiting_tail  # noqa: E402,F401
 from config import (ACTIVE_PORTFOLIO_IDS, BENCH_TAIL_WAIT_ATTEMPTS,  # noqa: E402
                     BENCH_TAIL_WAIT_SECONDS, DATA_DIR, DOCS_DATA_DIR, DOCS_INDEX,
@@ -68,8 +70,11 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     stats = adapter.build_stats(model_bt, model_full, overlay, reg, benchmarks)
     regime = adapter.build_regime(overlay, live)
     risk = adapter.build_risk(price_series, weights, reg)
-    attribution = adapter.build_attribution(equity, weights, price_series, reg,
-                                            risk["by_ticker"], ref_date=model_full.index[-1])
+    attribution_panel = historical_attribution.fetch_panel(
+        bundle, reg, model_full.index[-1], fetch=use_benchmarks)
+    # Attribute the exact NAV precision published to the browser and email.
+    attribution_nav = pd.Series([adapter._r(v) for v in model_full], index=model_full.index)
+    attribution = historical_attribution.build(bundle, reg, attribution_nav, attribution_panel)
     pnl = adapter.build_pnl(model_full, benchmarks)
     holdings_prices = adapter.build_holdings_prices(bundle["holdings_prices_1y.json"], price_series, weights)
     signals = adapter.build_signals(weights, price_meta, reg)

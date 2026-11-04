@@ -1,4 +1,4 @@
-"""HTML email and two-page A4 dossier, rendered from one verified report object."""
+"""HTML email and A4 dossier, rendered from one verified report object."""
 from __future__ import annotations
 
 from html import escape
@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import math
 
 from morning_report import PAGE, URL, fmt
+from attribution_presentation import bp, comparison_rows, leaders, bridge_text
 
 INK, MUTED, GREEN, RED, BORDER = '#1a1a18', '#5c5c56', '#146c43', '#a93226', '#e2e0d8'
 BLUE, CYAN, TRACK = '#1d4ed8', '#0e7490', '#eeeee8'
@@ -32,43 +33,30 @@ def excess(row):
     return ExcessValue(None if row.get('SPY') is None else row['model']-row['SPY'])
 
 
-def contribution_summary(r):
-    attrs=r['attribution']
-    if any(not math.isfinite(a['1D']['contrib']) for a in attrs):
-        raise ValueError('Non-finite contribution')
-    positive=sorted([a for a in attrs if a['1D']['contrib']>0],key=lambda a:-a['1D']['contrib'])
-    negative=sorted([a for a in attrs if a['1D']['contrib']<0],key=lambda a:a['1D']['contrib'])
-    net=sum(a['1D']['contrib'] for a in attrs)
-    residual=r['performance'][0]['model']-net
-    if attrs and not math.isclose(residual,r['attribution_residual'],abs_tol=1e-10):
-        raise ValueError('Attribution residual does not reconcile to the model return')
-    return {'positive':positive,'negative':negative,'net':net,'residual':residual,
-            'positive_total':sum(a['1D']['contrib'] for a in positive),
-            'negative_total':sum(a['1D']['contrib'] for a in negative),
-            'flat_weight':sum(a.get('weight',0) for a in attrs if a['1D']['contrib']==0),
-            'covered_weight':sum(a.get('weight',0) for a in attrs),
-            'scale':max([abs(a['1D']['contrib']) for a in attrs]+[.000001])}
-
-
 def contribution_html(r):
-    if not r['attribution']:
-        return '<h2>Contribution estimates unavailable</h2><p>No covered holding contributions were supplied.</p>'
-    s=contribution_summary(r)
-    body='<h2>What contributed to the session return</h2>'
-    body+=f'<p class="small">Indicative current-weight estimates supplied in build {escape(r["meta"]["built_at_utc"])}. Individual quote dates are not independently verified.</p>'
-    for key,title,colour,bg in [('positive','Positive contributors',GREEN,'#edf7f0'),('negative','Negative contributors',RED,'#fdf0ee')]:
-        rows=s[key]
-        body+=f'<div style="border-left:4px solid {colour};background:{bg};padding:12px;margin:12px 0">'
-        body+=f'<p style="margin:0 0 8px;color:{colour};font-weight:bold">{title} &middot; {s[key+"_total"]*10000:+.1f} bp across {len(rows)} holdings</p>'
-        body+=table(['Largest three','Contribution'],[[a['name'],BarValue(a['1D']['contrib'],s['scale'],label=f'{a["1D"]["contrib"]*10000:+.1f} bp')] for a in rows[:3]]) if rows else '<p style="margin:0">None in the supplied estimates.</p>'
+    a=r['attribution']
+    body='<h2>Strategy contribution: 1D and 1M</h2>'
+    body+='<p class="small">Historical model holdings; USD; contribution in basis points. 100 bp = 1 percentage point.</p>'
+    rows=comparison_rows(a,'strategy')
+    scale=max([abs(x[h]) for x in rows for h in ('1D','1M') if x[h] is not None]+[.000001])
+    body+=table(['Strategy','1D','1M'],[[x['name']]+[BarValue(x[h],scale,label=bp(x[h])+(' *' if x[h+'_coverage']<.999999 else '')) for h in ('1D','1M')] for x in rows])
+    body+=f'<p class="small">Strategy bars share a 0-{scale*10000:.1f} bp magnitude scale. *Published strategy return has incomplete underlying ETF price verification.</p>'
+    for h in ('1D','1M'):
+        p=a['periods'][h]
+        body+=f'<h2>{h} ETF contributors and detractors</h2><p class="small">{escape(str(p["start"]))} to {escape(p["end"])}. Source: published historical holdings and adjusted prices.</p>'
+        if p['status']=='unavailable':
+            body+='<p>'+escape(bridge_text(p))+'</p>';continue
+        selected=leaders(a,h)
+        for key,title,colour,bg in [('positive','Positive contributors',GREEN,'#edf7f0'),('negative','Negative contributors',RED,'#fdf0ee')]:
+            group=selected[key][:3]
+            body+=f'<div style="border-left:4px solid {colour};background:{bg};padding:12px;margin:12px 0"><strong style="color:{colour}">{title}</strong>'
+            body+=table(['ETF / model label','Contribution'],[[f'{x["name"]} ({x["ticker"]})',BarValue(x['contrib'],selected['scale'],label=bp(x['contrib']))] for x in group]) if group else '<p>None with complete price coverage.</p>'
+            body+='</div>'
+        body+=f'<p class="small">Top three per sign among fully priced holdings; both groups share a 0-{selected["scale"]*10000:.1f} bp scale for {h}. Exited holdings remain in the monthly calculation.</p>'
+        body+='<div style="background:#fff8eb;border-left:4px solid #b45309;padding:12px"><strong>Reconciliation'+(' / review required' if p['status']=='review' else '')+'</strong><p style="margin:6px 0">'+escape(bridge_text(p))+'</p>'
+        if p['issues']:body+='<p class="small" style="margin:0">'+escape('; '.join(p['issues']))+'</p>'
         body+='</div>'
-    body+=f'<p class="small">Both groups use the same 0-{s["scale"]*10000:.1f} bp magnitude scale. Totals include all covered holdings; rows show up to three per group. 100 basis points (bp) = 1 percentage point.</p>'
-    # Five basis points is a reporting review threshold, not a portfolio risk limit.
-    material=abs(s['residual'])>=.0005
-    accent='#b45309' if material else MUTED
-    body+=f'<div style="background:#fff8eb;border-left:4px solid {accent};padding:12px"><strong>{"Reconciliation review" if material else "Reconciliation"}</strong><p style="margin:6px 0">Covered estimates {s["net"]*10000:+.1f} bp + unexplained residual {s["residual"]*10000:+.1f} bp = model return {r["performance"][0]["model"]*10000:+.1f} bp.</p>'
-    body+=f'<p class="small" style="margin:0">Covered weight {s["covered_weight"]:.1%}; {s["flat_weight"]:.1%} of NAV has a reported zero contribution. A zero is not proof of a fresh quote. Review residuals of 5 bp or more in either direction. Rounding may affect displayed sums.</p></div>'
-    body+='<p class="small">These estimates explain absolute portfolio return approximately. They do not attribute excess return versus the benchmark. FX, quote timing, rebalancing and coverage may differ; the residual is not assigned to a cause.</p>'
+    body+='<p class="small">'+escape(a['method'])+' Incomplete ETF rows are excluded from rankings, not treated as zero. Residuals of 5 bp or more are flagged in either direction. This explains absolute model return, not benchmark excess or actual-account P&amp;L. Full ETF and strategy details are in the PDF and dashboard.</p>'
     return body
 
 
@@ -160,7 +148,7 @@ def report_html(r, preview=False):
     one = perf[0]
     colour = GREEN if one['model'] >= 0 else RED
     ytd = next((x['model'] for x in perf if x['period']=='YTD'),None)
-    warning = '<p style="padding:12px;background:#fff4df;color:#92400e;font-weight:bold">DESIGN PREVIEW - prior-session data; not a current overnight report.</p>' if preview else ''
+    warning = '<p style="padding:12px;background:#fff4df;color:#92400e;font-weight:bold">DESIGN PREVIEW - sample only; not a scheduled delivery.</p>' if preview else ''
     title = f'Model {pct(one["model"])} for the session'
     body = warning+f'<h1 style="font-family:Georgia,serif;font-size:32px;line-height:1.2">{escape(title)}</h1>'
     body += f'<p style="font-size:14px;color:{MUTED}">Close of <strong>{r["nav_date"]}</strong> &middot; USD &middot; source: published model NAV</p>'
@@ -181,7 +169,7 @@ def report_html(r, preview=False):
     w,g=r['weights'],r['regime']
     body += f'<p>{r["underwater_days"]} calendar days below the high-water mark. Top-five concentration: {w["concentration"]["top5"]:.1%}. Defensive allocation: {w["cash_pct"]:.1%}.</p>'
     body += '<div class="card" style="padding:12px;border:1px solid #e2e0d8;background:#ffffff"><strong style="font-size:14px">Current drawdown</strong><br>'+bar_html(drawdown_bar(r))+f'<p class="small" style="margin-bottom:0">Track ends at the historical maximum drawdown of {pct(r["risk_rows"][0]["max_dd"])} through {r["nav_date"]}. Historical context, not a loss limit.</p></div>'
-    body += f'<p class="small">Executed book: {r["meta"].get("portfolio_anchor",r["meta"]["asOf"])}. Gate: {escape(g["state"].replace("_"," ").lower())}. Defensive allocation may include short-duration Treasury funds.</p>'
+    body += f'<p class="small">Model holdings anchor: {r["meta"].get("portfolio_anchor",r["meta"]["asOf"])}. Gate: {escape(g["state"].replace("_"," ").lower())}. Defensive allocation may include short-duration Treasury funds.</p>'
     body += table(['Window','CAGR','Volatility','Sharpe'],[[{'Full published history (includes backtest)':'Full history','Trailing 3 years':'3 years','Trailing 1 year':'1 year'}[x['period']],pct(x['cagr']),pct(x['vol']),number(x['sharpe'])] for x in r['risk_rows']])
     body += '<p class="small">Through '+r['nav_date']+'. Full history includes backtest. Sharpe uses the published Treasury-bill proxy; annualisation assumes 252 observations. Estimates and methodology in the PDF.</p>'
     risks={x['name']:x['risk_pct'] for x in r['risk_contributors']}
@@ -223,13 +211,13 @@ def report_pdf(r, path, preview=False):
     def t(headers,rows,widths):
         # Equal pixel lengths per unit within a table, even if text-column widths differ.
         bar_width=min([widths[i]-12 for row in rows for i,x in enumerate(row) if isinstance(x,BarValue)]+[width])
-        data=[[PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(f'<font color="{x.colour}"><b>{x.text}</b></font>' if isinstance(x,ExcessValue) else escape(str(x)),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
+        data=[[PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(f'<font color="{x.colour}"><b>{x.text}</b></font>' if isinstance(x,ExcessValue) else escape(str(x)).replace('\n','<br/>'),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
         tb=Table(data,colWidths=widths,repeatRows=1,hAlign='LEFT')
         tb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#f5f5f0')),('LINEBELOW',(0,0),(-1,-1),.4,colors.HexColor(BORDER)),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)]))
         flow.append(tb)
     width=A4[0]-36*mm
     p('MULTI-STRATEGY PORTFOLIO / PAPER MODEL','small')
-    if preview: p('DESIGN PREVIEW - prior-session data; not a current overnight report.','h')
+    if preview: p('DESIGN PREVIEW - sample only; not a scheduled delivery.','h')
     one=r['performance'][0]
     p(f'Model {pct(one["model"])} for the session','title')
     p(f'USD | Close of {r["nav_date"]} | Published model NAV','small')
@@ -244,24 +232,44 @@ def report_pdf(r, path, preview=False):
     p('Long-term risk scorecard','h')
     t(['Window','CAGR','Vol.','Sharpe','Sortino','Calmar','Max DD'],[[{'Full published history (includes backtest)':'Full history','Trailing 3 years':'3 years','Trailing 1 year':'1 year'}[x['period']],pct(x['cagr']),pct(x['vol']),number(x['sharpe']),number(x['sortino']),number(x['calmar']),pct(x['max_dd'])] for x in r['risk_rows']],[width*.19]+[width*.135]*6)
     for x in r['risk_rows']: p(f'{escape(x["period"])}: {x["start"]} to {x["end"]}; {x["observations"]} return observations.','small')
-    p('Risk relative to benchmarks - trailing one year','h')
-    t(['Benchmark','Beta','Tracking error','Information ratio'],[[SPY_LABEL if x['benchmark']=='S&P 500' else x['benchmark'],number(x['beta']),pct(x['tracking_error']),number(x['information_ratio'])] for x in r['relative_rows']],[width*.40,width*.15,width*.23,width*.22])
     p('Hypothetical model performance. Full history includes backtest; the live extension, where present, is marked to market. Historical statistics are descriptive, not a forecast.','small')
     flow.append(PageBreak())
     p('Exposures, attribution and basis','title')
     w,g=r['weights'],r['regime']
-    p(f'Executed book: {r["meta"].get("portfolio_anchor",r["meta"]["asOf"])}. Gate: {escape(g["state"])}. Breadth {g["breadth"]:.1%} at {g["panel_end_date"]}. Defensive allocation {w["cash_pct"]:.1%}; top-five weight {w["concentration"]["top5"]:.1%}.','p')
+    p(f'Model holdings anchor: {r["meta"].get("portfolio_anchor",r["meta"]["asOf"])}. Gate: {escape(g["state"])}. Breadth {g["breadth"]:.1%} at {g["panel_end_date"]}. Defensive allocation {w["cash_pct"]:.1%}; top-five weight {w["concentration"]["top5"]:.1%}.','p')
     p('Largest allocations and estimated risk shares','h')
     risks={x['name']:x['risk_pct'] for x in r['risk_contributors']}
     allocations=sorted(w['rows'],key=lambda x:x['weight'],reverse=True)[:5]
     t(['Portfolio label','Weight','Risk share*'],[[x['name'],BarValue(x['weight'],1,'weight',f'{x["weight"]:.1%}'),BarValue(risks.get(x['name']),1,'risk',f'{risks[x["name"]]:.1%}' if x['name'] in risks else '-')] for x in allocations],[width*.62,width*.18,width*.20])
     p('Blue: share of NAV. Teal: share of estimated portfolio risk. Both tracks 0-100%; denominators differ. *Only the three largest risk shares are shown; a dash is not zero. Current-weight covariance estimates, not forecasts.','small')
-    p('Indicative one-session attribution','h')
-    summary=contribution_summary(r)
-    selected=summary['positive'][:2]+summary['negative'][:2]
-    t(['Largest two contributors / detractors','Contribution'],[[x['name'],BarValue(x['1D']['contrib'],summary['scale'],label=f'{x["1D"]["contrib"]*10000:+.1f} bp')] for x in selected],[width*.76,width*.24])
-    p(f'Common scale 0-{summary["scale"]*10000:.1f} bp. All covered positives {summary["positive_total"]*10000:+.1f} bp; negatives {summary["negative_total"]*10000:+.1f} bp. Net {summary["net"]*10000:+.1f} bp + residual {summary["residual"]*10000:+.1f} bp = model {one["model"]*10000:+.1f} bp (rounding applies). Review absolute residuals of at least 5 bp.','small')
-    p(f'Current-weight estimates, not realised or benchmark-relative attribution. Covered weight {summary["covered_weight"]:.1%}; reported zero contributions cover {summary["flat_weight"]:.1%} of NAV, not proof of fresh quotes. Build {r["meta"]["built_at_utc"]}; individual rows lack valuation timestamps. 100 bp = 1 percentage point.','small')
+    p('Historical strategy contribution','h')
+    attr=r['attribution']; strategy_rows=comparison_rows(attr,'strategy')
+    strategy_scale=max([abs(x[h]) for x in strategy_rows for h in ('1D','1M') if x[h] is not None]+[.000001])
+    t(['Strategy','1D','1M'],[[x['name']]+[BarValue(x[h],strategy_scale,label=bp(x[h])+(' *' if x[h+'_coverage']<.999999 else '')) for h in ('1D','1M')] for x in strategy_rows],[width*.6,width*.2,width*.2])
+    p(f'Common scale 0-{strategy_scale*10000:.1f} bp. *Published net strategy return; underlying ETF price verification is incomplete.','small')
+    for hz in ('1D','1M'):
+        ap=attr['periods'][hz]
+        p(f'{hz}: {ap["start"]} to {ap["end"]}. '+bridge_text(ap),'small')
+    p('Historical holdings, effective after fill-date close. Prior official NAV links daily contributions. ETF marks are gross of trading costs; net strategy returns include source costs. Residuals remain unexplained; absolute residuals of 5 bp or more require review.','small')
+    p('Risk relative to benchmarks - trailing one year','h')
+    t(['Benchmark','Beta','Tracking error','Information ratio'],[[SPY_LABEL if x['benchmark']=='S&P 500' else x['benchmark'],number(x['beta']),pct(x['tracking_error']),number(x['information_ratio'])] for x in r['relative_rows']],[width*.40,width*.15,width*.23,width*.22])
+    flow.append(PageBreak())
+    p('ETF contribution: historical holdings','title')
+    p('USD; 1D and trailing 1M. Names include the model label and pricing proxy where different. Avg. wt is the mean beginning-of-session NAV weight over the monthly window; exited positions remain included.','small')
+    etfs=sorted(comparison_rows(attr,'etf'),key=lambda x:-abs(x['1M'] if x['1M'] is not None else x['1D'] or 0))
+    scale=max([abs(x[h]) for x in etfs for h in ('1D','1M') if x[h] is not None]+[.000001])
+    strategy_names={x['code']:x['name'] for ap in attr['periods'].values() for x in ap['strategy']}
+    t(['ETF / owning strategy','Avg. wt 1M','1D','1M'],
+      [[x['name']+' ('+x['ticker']+')'+(' / priced as '+x['price_symbol'] if x['price_symbol']!=x['ticker'] else '')+'\n'+', '.join(strategy_names.get(c,c) for c in x['strategies']),
+        '-' if x['avg_weight_1M'] is None else f'{x["avg_weight_1M"]:.1%}']+[BarValue(x[h],scale,label=bp(x[h])) for h in ('1D','1M')] for x in etfs],
+      [width*.49,width*.15,width*.18,width*.18])
+    p(f'All ETF bars share a 0-{scale*10000:.1f} bp magnitude scale. A dash means the complete period cannot be verified; known partial marks remain in the reconciliation bridge. Zero means no contribution or no position in that period.','small')
+    for hz in ('1D','1M'):
+        ap=attr['periods'][hz]
+        p(f'{hz}: {ap["start"]} to {ap["end"]}. '+bridge_text(ap),'small')
+        if ap['issues']:p('; '.join(ap['issues']),'small')
+    p(escape(attr['method']),'small')
+    p('Price acquisition: '+escape(str(attr.get('prices_acquired_at_utc','unavailable')))+'. Absolute contribution, not attribution of benchmark excess. Model history is hypothetical; actual-account fills are not used.','small')
     p('Calculation conventions and provenance','h')
     p('CAGR uses actual calendar days. Volatility, Sharpe and tracking error use 252 observations per year. The common-date panel can contain multi-session gaps, so annualised risk measures are approximations. Sharpe subtracts the published Treasury-bill proxy. Sortino uses the root mean square of negative excess returns over all observations. Calmar is CAGR divided by absolute maximum drawdown. Information ratio is mean active daily return divided by its standard deviation, annualised.','small')
     p(f'No missing benchmark observations are forward-filled. Fund proxies include their own expenses. Source cost assumption: {r["meta"].get("cost_assumption_bps","unavailable")}bp; actual fills, account costs and capacity are not verified. Engine-labelled out-of-sample start: {r["meta"].get("oos_start","unavailable")}; not independent proof of an untouched holdout.','small')

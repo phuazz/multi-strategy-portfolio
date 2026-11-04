@@ -127,11 +127,17 @@ Trades tab reports the unfiltered count for the same date. The digest and the Tr
 **Overview** · **Allocation** · **Performance** · **Attribution** · **Risk & Regime** ·
 **Signals** · **Data Health** · **Methodology** — built so a performance analyst, a CIO,
 and a quant PM each find what they look for: benchmark-relative performance and capture;
-exposures, concentration and the regime state; sleeve/ETF attribution, a risk/return scatter
-and risk-contribution decomposition, correlation and signal transparency; and first-class
+exposures, concentration and the regime state; historical 1D/1M strategy and named-ETF
+attribution, risk-contribution decomposition, correlation and signal transparency; and first-class
 data-integrity surfacing. Allocation rows are tap-to-expand, revealing a per-holding price
 chart (close + 50/200-day MA) and trend signals. Short-horizon P&L (1-day / 1-week / 1-month
 vs benchmarks) is calendar-weekday anchored, so an uneven multi-market calendar reads correctly.
+
+Historical attribution uses raw model fill histories, retains exited ETFs and links
+daily contributions to the official 1D and trailing 1M NAV returns. Missing prices
+and unexplained residuals remain visible. The dashboard, email and complete PDF
+share this version-2 dataset; [ATTRIBUTION.md](ATTRIBUTION.md) defines the method,
+price basis and verification guards.
 
 ## Build & develop
 
@@ -214,7 +220,7 @@ breadth panel. Every build:
 The [morning email](MORNING_REPORT.md) is delivered by GitHub after the deployed NAV,
 benchmarks and portfolio coverage pass freshness checks. It targets 09:00 Singapore
 time Tuesday-Saturday, sends a delay notice from 11:00 if needed, and attaches a
-two-page A4 review once fresh data is ready. GitHub scheduling delays can shift
+complete A4 review once fresh data is ready. GitHub scheduling delays can shift
 delivery. The local Codex email schedule is paused to prevent duplicate delivery.
 
 - [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) — the strategy engine (upstream source).
