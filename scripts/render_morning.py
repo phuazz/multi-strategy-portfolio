@@ -10,6 +10,66 @@ from morning_report import PAGE, URL, fmt
 
 INK, MUTED, GREEN, RED, BORDER = '#1a1a18', '#5c5c56', '#146c43', '#a93226', '#e2e0d8'
 BLUE, CYAN, TRACK = '#1d4ed8', '#0e7490', '#eeeee8'
+SPY_LABEL = 'S&P 500 TR proxy'
+SPY_BASIS = 'S&P 500 total-return proxy: SPY adjusted close, including distributions and fund expenses; not the exact index return.'
+
+
+@dataclass(frozen=True)
+class ExcessValue:
+    """Arithmetic excess in percentage points, without mixing bar scales."""
+    value: float | None
+
+    @property
+    def text(self):
+        return '-' if self.value is None else f'{self.value*100:+.2f}pp'
+
+    @property
+    def colour(self):
+        return MUTED if self.value is None or self.value == 0 else GREEN if self.value > 0 else RED
+
+
+def excess(row):
+    return ExcessValue(None if row.get('SPY') is None else row['model']-row['SPY'])
+
+
+def contribution_summary(r):
+    attrs=r['attribution']
+    if any(not math.isfinite(a['1D']['contrib']) for a in attrs):
+        raise ValueError('Non-finite contribution')
+    positive=sorted([a for a in attrs if a['1D']['contrib']>0],key=lambda a:-a['1D']['contrib'])
+    negative=sorted([a for a in attrs if a['1D']['contrib']<0],key=lambda a:a['1D']['contrib'])
+    net=sum(a['1D']['contrib'] for a in attrs)
+    residual=r['performance'][0]['model']-net
+    if attrs and not math.isclose(residual,r['attribution_residual'],abs_tol=1e-10):
+        raise ValueError('Attribution residual does not reconcile to the model return')
+    return {'positive':positive,'negative':negative,'net':net,'residual':residual,
+            'positive_total':sum(a['1D']['contrib'] for a in positive),
+            'negative_total':sum(a['1D']['contrib'] for a in negative),
+            'flat_weight':sum(a.get('weight',0) for a in attrs if a['1D']['contrib']==0),
+            'covered_weight':sum(a.get('weight',0) for a in attrs),
+            'scale':max([abs(a['1D']['contrib']) for a in attrs]+[.000001])}
+
+
+def contribution_html(r):
+    if not r['attribution']:
+        return '<h2>Contribution estimates unavailable</h2><p>No covered holding contributions were supplied.</p>'
+    s=contribution_summary(r)
+    body='<h2>What contributed to the session return</h2>'
+    body+=f'<p class="small">Indicative current-weight estimates supplied in build {escape(r["meta"]["built_at_utc"])}. Individual quote dates are not independently verified.</p>'
+    for key,title,colour,bg in [('positive','Positive contributors',GREEN,'#edf7f0'),('negative','Negative contributors',RED,'#fdf0ee')]:
+        rows=s[key]
+        body+=f'<div style="border-left:4px solid {colour};background:{bg};padding:12px;margin:12px 0">'
+        body+=f'<p style="margin:0 0 8px;color:{colour};font-weight:bold">{title} &middot; {s[key+"_total"]*10000:+.1f} bp across {len(rows)} holdings</p>'
+        body+=table(['Largest three','Contribution'],[[a['name'],BarValue(a['1D']['contrib'],s['scale'],label=f'{a["1D"]["contrib"]*10000:+.1f} bp')] for a in rows[:3]]) if rows else '<p style="margin:0">None in the supplied estimates.</p>'
+        body+='</div>'
+    body+=f'<p class="small">Both groups use the same 0-{s["scale"]*10000:.1f} bp magnitude scale. Totals include all covered holdings; rows show up to three per group. 100 basis points (bp) = 1 percentage point.</p>'
+    # Five basis points is a reporting review threshold, not a portfolio risk limit.
+    material=abs(s['residual'])>=.0005
+    accent='#b45309' if material else MUTED
+    body+=f'<div style="background:#fff8eb;border-left:4px solid {accent};padding:12px"><strong>{"Reconciliation review" if material else "Reconciliation"}</strong><p style="margin:6px 0">Covered estimates {s["net"]*10000:+.1f} bp + unexplained residual {s["residual"]*10000:+.1f} bp = model return {r["performance"][0]["model"]*10000:+.1f} bp.</p>'
+    body+=f'<p class="small" style="margin:0">Covered weight {s["covered_weight"]:.1%}; {s["flat_weight"]:.1%} of NAV has a reported zero contribution. A zero is not proof of a fresh quote. Review residuals of 5 bp or more in either direction. Rounding may affect displayed sums.</p></div>'
+    body+='<p class="small">These estimates explain absolute portfolio return approximately. They do not attribute excess return versus the benchmark. FX, quote timing, rebalancing and coverage may differ; the residual is not assigned to a cause.</p>'
+    return body
 
 
 @dataclass(frozen=True)
@@ -67,7 +127,7 @@ def number(x):
 
 def cell(value, header=False):
     tag = 'th' if header else 'td'
-    content=bar_html(value) if isinstance(value,BarValue) else escape(str(value))
+    content=bar_html(value) if isinstance(value,BarValue) else (f'<strong style="color:{value.colour}">{value.text}</strong>' if isinstance(value,ExcessValue) else escape(str(value)))
     bg='background:#f5f5f0;' if header else ''
     return f'<{tag} style="{bg}padding:10px 6px;border-bottom:1px solid {BORDER};text-align:left;font-size:14px;line-height:1.45;vertical-align:top">{content}</{tag}>'
 
@@ -110,11 +170,13 @@ def report_html(r, preview=False):
     body += '</tr></table>'
     if 'SPY' in one:
         diff=(one['model']-one['SPY'])*100
-        body += f'<p>The model was {abs(diff):.2f} percentage points {"ahead of" if diff >= 0 else "behind"} the S&amp;P 500 for the same session.</p>'
+        body += f'<p>The model was <strong style="color:{excess(one).colour}">{abs(diff):.2f} percentage points {"ahead of" if diff >= 0 else "behind"}</strong> the S&amp;P 500 total-return proxy for the same session.</p>'
     body += '<h2>Performance</h2><p class="small">Returns through '+r['nav_date']+'. Matched endpoints; detailed windows in the PDF.</p>'
     scale=return_scale(r)
-    body += table(['Period','Model','S&P 500','Global 60/40'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY','AOR')] for x in perf])
-    body += f'<p class="small">Bar length shows absolute return on one common 0-{scale:.1%} scale. Green = gain; red = loss. Signs remain in the figures.</p>'
+    body += table(['Period','Model',SPY_LABEL,'Excess (pp)'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY')]+[excess(x)] for x in perf])
+    body += f'<p class="small">{SPY_BASIS} Excess = model minus proxy on identical endpoints, in percentage points (pp). Green/red excess means outperformance/underperformance, even when both returns are negative.</p>'
+    body += f'<p class="small">Return bars share one 0-{scale:.1%} magnitude scale: green = gain; red = loss. The PDF also shows the global 60/40 fund comparator and exact start dates.</p>'
+    body += contribution_html(r)
     body += '<h2>Risk and positioning</h2>'
     w,g=r['weights'],r['regime']
     body += f'<p>{r["underwater_days"]} calendar days below the high-water mark. Top-five concentration: {w["concentration"]["top5"]:.1%}. Defensive allocation: {w["cash_pct"]:.1%}.</p>'
@@ -127,14 +189,6 @@ def report_html(r, preview=False):
     body += '<h2>Largest allocations</h2>'
     body += table(['Holding','NAV weight','Risk share*'],[[x['name'],BarValue(x['weight'],1,'weight',f'{x["weight"]:.1%}'),BarValue(risks.get(x['name']),1,'risk',f'{risks[x["name"]]:.1%}' if x['name'] in risks else '-')] for x in allocations])
     body += '<p class="small">Blue = share of NAV; teal = estimated share of portfolio risk. Both tracks run from 0 to 100%, with different denominators. *Only the three largest portfolio risk contributors are available here; a dash is not zero.</p>'
-    attrs=r['attribution']
-    if attrs:
-        low=min(attrs,key=lambda x:x['1D']['contrib']); high=max(attrs,key=lambda x:x['1D']['contrib'])
-        body += '<h2>Indicative contributors</h2>'
-        attr_scale=max(abs(x['1D']['contrib']) for x in attrs) or .000001
-        body += table(['Holding','Contribution'],[[x['name'],BarValue(x['1D']['contrib'],attr_scale,label=f'{x["1D"]["contrib"]*100:+.2f}pp')] for x in (high,low)])
-        body += f'<p class="small">Common magnitude scale: 0-{attr_scale*100:.2f}pp. Green = positive contribution; red = negative contribution.</p>'
-        body += f'<p class="small">Current-weight estimates from build {escape(r["meta"]["built_at_utc"])}; not realised attribution. Residual to model return: {r["attribution_residual"]*100:+.2f}pp. Individual quote dates are not independently stamped.</p>'
     body += '<div class="card" style="background:#ffffff;border:1px solid #e2e0d8;padding:18px;margin-top:24px"><strong>Attached: the portfolio review PDF</strong><p style="margin-bottom:0">Includes the full risk scorecard, attribution, valuation dates and calculation conventions. No portfolio action is implied by this report.</p></div>'
     return shell(title,body)
 
@@ -169,7 +223,7 @@ def report_pdf(r, path, preview=False):
     def t(headers,rows,widths):
         # Equal pixel lengths per unit within a table, even if text-column widths differ.
         bar_width=min([widths[i]-12 for row in rows for i,x in enumerate(row) if isinstance(x,BarValue)]+[width])
-        data=[[PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(escape(str(x)),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
+        data=[[PDFBar(x,bar_width) if isinstance(x,BarValue) else Paragraph(f'<font color="{x.colour}"><b>{x.text}</b></font>' if isinstance(x,ExcessValue) else escape(str(x)),styles['cell']) for i,x in enumerate(row)] for row in [headers]+rows]
         tb=Table(data,colWidths=widths,repeatRows=1,hAlign='LEFT')
         tb.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#f5f5f0')),('LINEBELOW',(0,0),(-1,-1),.4,colors.HexColor(BORDER)),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)]))
         flow.append(tb)
@@ -184,13 +238,14 @@ def report_pdf(r, path, preview=False):
     p(f'Drawdown track: zero to historical maximum {pct(r["risk_rows"][0]["max_dd"])} through {r["nav_date"]}; not a loss limit.','small')
     p('Performance on matched valuation dates','h')
     scale=return_scale(r)
-    t(['Period','Model','S&P 500','Global 60/40','Start'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY','AOR')]+[x['start']] for x in r['performance']],[width*.18,width*.18,width*.18,width*.22,width*.24])
+    t(['Period','Model',SPY_LABEL,'Excess (pp)','Global 60/40','Start'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY')]+[excess(x),BarValue(x.get('AOR'),scale),x['start']] for x in r['performance']],[width*.12,width*.14,width*.17,width*.15,width*.18,width*.24])
     p(f'All periods end {r["nav_date"]}. Bars show absolute return on a common 0-{scale:.1%} scale; green = gain, red = loss. Global 60/40: balanced-fund proxy. Source: deployed model dataset.','small')
+    p(SPY_BASIS+' Excess = model minus proxy, in percentage points.','small')
     p('Long-term risk scorecard','h')
     t(['Window','CAGR','Vol.','Sharpe','Sortino','Calmar','Max DD'],[[{'Full published history (includes backtest)':'Full history','Trailing 3 years':'3 years','Trailing 1 year':'1 year'}[x['period']],pct(x['cagr']),pct(x['vol']),number(x['sharpe']),number(x['sortino']),number(x['calmar']),pct(x['max_dd'])] for x in r['risk_rows']],[width*.19]+[width*.135]*6)
     for x in r['risk_rows']: p(f'{escape(x["period"])}: {x["start"]} to {x["end"]}; {x["observations"]} return observations.','small')
     p('Risk relative to benchmarks - trailing one year','h')
-    t(['Benchmark','Beta','Tracking error','Information ratio'],[[x['benchmark'],number(x['beta']),pct(x['tracking_error']),number(x['information_ratio'])] for x in r['relative_rows']],[width*.40,width*.15,width*.23,width*.22])
+    t(['Benchmark','Beta','Tracking error','Information ratio'],[[SPY_LABEL if x['benchmark']=='S&P 500' else x['benchmark'],number(x['beta']),pct(x['tracking_error']),number(x['information_ratio'])] for x in r['relative_rows']],[width*.40,width*.15,width*.23,width*.22])
     p('Hypothetical model performance. Full history includes backtest; the live extension, where present, is marked to market. Historical statistics are descriptive, not a forecast.','small')
     flow.append(PageBreak())
     p('Exposures, attribution and basis','title')
@@ -202,12 +257,11 @@ def report_pdf(r, path, preview=False):
     t(['Portfolio label','Weight','Risk share*'],[[x['name'],BarValue(x['weight'],1,'weight',f'{x["weight"]:.1%}'),BarValue(risks.get(x['name']),1,'risk',f'{risks[x["name"]]:.1%}' if x['name'] in risks else '-')] for x in allocations],[width*.62,width*.18,width*.20])
     p('Blue: share of NAV. Teal: share of estimated portfolio risk. Both tracks 0-100%; denominators differ. *Only the three largest risk shares are shown; a dash is not zero. Current-weight covariance estimates, not forecasts.','small')
     p('Indicative one-session attribution','h')
-    attrs=r['attribution']; ordered=sorted(attrs,key=lambda x:x['1D']['contrib'])
-    selected=ordered[:2]+ordered[-2:] if len(ordered)>=4 else ordered
-    attr_scale=max([abs(x['1D']['contrib']) for x in attrs]+[.000001])
-    t(['Portfolio label','Contribution'],[[x['name'],BarValue(x['1D']['contrib'],attr_scale,label=f'{x["1D"]["contrib"]*100:+.2f}pp')] for x in selected],[width*.76,width*.24])
-    p(f'Common contribution magnitude scale: 0-{attr_scale*100:.2f}pp; green = positive, red = negative.','small')
-    if selected: p(f'Current-weight approximation; residual to official return {r["attribution_residual"]*100:+.2f}pp. Not realised holdings attribution. Build {r["meta"]["built_at_utc"]}; individual rows lack an independent valuation timestamp.','small')
+    summary=contribution_summary(r)
+    selected=summary['positive'][:2]+summary['negative'][:2]
+    t(['Largest two contributors / detractors','Contribution'],[[x['name'],BarValue(x['1D']['contrib'],summary['scale'],label=f'{x["1D"]["contrib"]*10000:+.1f} bp')] for x in selected],[width*.76,width*.24])
+    p(f'Common scale 0-{summary["scale"]*10000:.1f} bp. All covered positives {summary["positive_total"]*10000:+.1f} bp; negatives {summary["negative_total"]*10000:+.1f} bp. Net {summary["net"]*10000:+.1f} bp + residual {summary["residual"]*10000:+.1f} bp = model {one["model"]*10000:+.1f} bp (rounding applies). Review absolute residuals of at least 5 bp.','small')
+    p(f'Current-weight estimates, not realised or benchmark-relative attribution. Covered weight {summary["covered_weight"]:.1%}; reported zero contributions cover {summary["flat_weight"]:.1%} of NAV, not proof of fresh quotes. Build {r["meta"]["built_at_utc"]}; individual rows lack valuation timestamps. 100 bp = 1 percentage point.','small')
     p('Calculation conventions and provenance','h')
     p('CAGR uses actual calendar days. Volatility, Sharpe and tracking error use 252 observations per year. The common-date panel can contain multi-session gaps, so annualised risk measures are approximations. Sharpe subtracts the published Treasury-bill proxy. Sortino uses the root mean square of negative excess returns over all observations. Calmar is CAGR divided by absolute maximum drawdown. Information ratio is mean active daily return divided by its standard deviation, annualised.','small')
     p(f'No missing benchmark observations are forward-filled. Fund proxies include their own expenses. Source cost assumption: {r["meta"].get("cost_assumption_bps","unavailable")}bp; actual fills, account costs and capacity are not verified. Engine-labelled out-of-sample start: {r["meta"].get("oos_start","unavailable")}; not independent proof of an untouched holdout.','small')

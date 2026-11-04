@@ -131,7 +131,7 @@ def build(d, now):
         val = float(s.iloc[-1] / s.loc[start] - 1)
         item = {'period':name,'start':str(start.date()),'end':str(end.date()),'model':val}
         row = f'{name} ({start:%Y-%m-%d} to {end:%Y-%m-%d}): model {fmt(val, True)}'
-        for key, label in [('SPY', 'S&P 500'), ('AOR', 'global 60/40 fund')]:
+        for key, label in [('SPY', 'S&P 500 TR proxy'), ('AOR', 'global 60/40 fund')]:
             b = benchmarks.get(key)
             if b is not None and start in b.index and end in b.index:
                 br = float(b.loc[end] / b.loc[start] - 1)
@@ -141,7 +141,7 @@ def build(d, now):
                 row += f'; {label} unavailable on matched dates'
         lines.append(row)
         performance.append(item)
-    lines += ['', f'2. Risk and long-term record through {end:%Y-%m-%d}']
+    lines += ['S&P 500 total-return proxy: SPY adjusted close, including distributions and fund expenses; not the exact index return. Excess is the model return minus the proxy on identical endpoints, in percentage points.', '', f'2. Risk and long-term record through {end:%Y-%m-%d}']
     def trailing(years):
         prior = s.loc[s.index <= end-pd.DateOffset(years=years)]
         return s.loc[s.index >= prior.index[-1]] if len(prior) else s.iloc[0:0]
@@ -155,7 +155,7 @@ def build(d, now):
         lines += [f'{label}: {window.index[0]:%Y-%m-%d} to {end:%Y-%m-%d}; {len(window)-1} returns.',
                   f'CAGR {fmt(rs["cagr"],True)}; volatility {fmt(rs["vol"],True)}; Sharpe {fmt(rs["sharpe"])}; Sortino {fmt(rs["sortino"])}; Calmar {fmt(rs["calmar"])}; maximum drawdown {fmt(rs["max_dd"],True)}.']
         if label == 'Trailing 1 year':
-            for key, name in [('SPY', 'S&P 500'), ('AOR', 'global 60/40 fund')]:
+            for key, name in [('SPY', 'S&P 500 TR proxy'), ('AOR', 'global 60/40 fund')]:
                 rel = relative_stats(window, benchmarks[key]) if key in benchmarks else None
                 if rel:
                     relative_rows.append({'benchmark':name,**rel})
@@ -181,9 +181,13 @@ def build(d, now):
     covered = [a for a in attrs if a.get('covered') and a.get('1D',{}).get('contrib') is not None]
     if covered:
         for title, rows in [('Positive contributors',sorted([a for a in covered if a['1D']['contrib']>0],key=lambda x:-x['1D']['contrib'])[:3]),('Negative contributors',sorted([a for a in covered if a['1D']['contrib']<0],key=lambda x:x['1D']['contrib'])[:3])]:
-            lines.append(title + ': ' + ('; '.join(f'{a["name"]} {a["1D"]["contrib"]*100:+.2f}pp' for a in rows) or 'none') + '.')
+            lines.append(title + ': ' + ('; '.join(f'{a["name"]} {a["1D"]["contrib"]*10000:+.1f} bp' for a in rows) or 'none') + '.')
         residual = float(s.iloc[-1]/s.iloc[-2]-1)-sum(a['1D']['contrib'] for a in covered)
-        lines.append(f'Residual to official one-session model return: {residual*100:+.2f}pp. Current-weight approximation; not realised holdings attribution. Quote dates/FX, rebalancing and coverage can differ; no causal interpretation of this residual.')
+        positive=sum(a['1D']['contrib'] for a in covered if a['1D']['contrib']>0)
+        negative=sum(a['1D']['contrib'] for a in covered if a['1D']['contrib']<0)
+        flat_weight=sum(a.get('weight',0) for a in covered if a['1D']['contrib']==0)
+        lines.append(f'All covered positives {positive*10000:+.1f} bp; negatives {negative*10000:+.1f} bp; net {(positive+negative)*10000:+.1f} bp; residual {residual*10000:+.1f} bp. Review residuals of 5 bp or more in either direction. Rounding may affect displayed sums. 100 bp = 1 percentage point.')
+        lines.append(f'Reported zero contributions cover {flat_weight:.1%} of NAV; a zero does not prove a fresh quote. Current-weight approximation; not realised holdings attribution or attribution of benchmark excess. Quote dates/FX, rebalancing and coverage can differ; no causal interpretation of the residual.')
     lines += ['', '5. Exceptions and basis',
               'No trade instructions. Review delayed data, concentration and any pending model changes before acting.',
               f'Dataset health: {d["health"]["level"]}. Source commit: {meta["source_commit"]}.',

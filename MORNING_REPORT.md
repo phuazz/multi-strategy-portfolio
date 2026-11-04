@@ -59,6 +59,17 @@ uses amber. Colours do not substitute for numbers or state labels.
 
 Holding contributions use current weights and are explicitly approximate. Their
 residual is shown; quote-date and FX differences are not attributed to trading skill.
+The primary comparator is labelled S&P 500 TR proxy (SPY adjusted close), with an
+explicit arithmetic excess-return column in percentage points for every period.
+This is a fund total-return proxy, not literal SPX price return or exact index return.
+The global 60/40 comparator remains in the PDF. Positive and negative contribution
+panels sit immediately below performance in the email, showing the largest three
+holdings in each direction on a common basis-point scale. Group totals include all
+covered holdings. The PDF shows two per direction. Estimates plus residual must
+reconcile to model return; a mismatch blocks rendering. Absolute residuals of at
+least 5 bp are flagged for review symmetrically. Zero-contribution weight is disclosed
+because zero is not proof of a fresh quote. These are absolute-return estimates,
+not attribution of benchmark excess; no cause is assigned to the residual.
 Backtested history, engine-labelled out-of-sample performance and a live extension
 are kept distinct. Risk statistics use the published common-date panel and its
 calendar gaps are disclosed.
