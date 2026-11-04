@@ -696,6 +696,7 @@ function renderOverview(){
   const el=document.getElementById('tabContent');
   el.innerHTML = `
     <div class="pnl-strip" id="ovPnl"></div>
+    ${renderReturnContext()}
     ${renderWhatChanged()}
     <div class="card">
       <div class="card-h">
@@ -1237,10 +1238,20 @@ function rollingSeries(eq, dates, win){
 }
 
 /* ============================ PERFORMANCE ============================ */
+function riskUnits(v){return isNum(v)?(v>=0?'+':'')+v.toFixed(2)+'x'+(Math.abs(v)>2.5?' (beyond scale)':''):'Unavailable';}
+function riskGauge(v){
+  if(!isNum(v))return '<span class="muted">Unavailable</span>';
+  const clipped=Math.max(-2.5,Math.min(2.5,v)),left=50+Math.min(0,clipped)*20,width=Math.abs(clipped)*20;
+  return `<div aria-hidden="true" style="position:relative;margin:12px 0 26px;height:12px;background:linear-gradient(to right,#f5f5f0 0% 10%,#edf2f7 10% 30%,#dce8f4 30% 70%,#edf2f7 70% 90%,#f5f5f0 90% 100%)"><div data-risk-fill style="position:absolute;left:${left}%;width:${width}%;height:12px;background:var(${v<0?'--r':'--g'})"></div>${[-2,-1,0,1,2].map(n=>`<span style="position:absolute;left:${50+n*20}%;height:16px;top:-2px;border-left:1px solid var(--t3-text)"><span style="position:absolute;top:18px;transform:translateX(-50%);font-size:11px">${n>0?'+':''}${n}</span></span>`).join('')}</div>`;
+}
+function renderReturnContext(){
+  const context=DS.return_context;if(!context)return '';
+  return `<div class="card" data-risk-context style="margin:18px 0"><div class="card-title">How large was the move relative to risk?</div><p class="attr-prose">Same scale for both horizons: multiples of prior estimated horizon risk. Shading marks ±1 and ±2; tracks end at ±2.5. Green/red shows return direction.</p><div class="grid2">${Object.entries(context.periods).map(([h,p])=>`<div><strong>${h} · ${esc(p.start||'Unavailable')} to ${esc(p.end)}</strong>${p.status!=='ok'?`<p>${esc(p.reason)}</p>`:['model','active'].map(k=>{const x=p[k];return `<div class="risk-context-row" data-horizon="${h}" data-kind="${k}" style="margin-top:14px"><strong>${k==='model'?'Model':'Excess vs S&amp;P 500 TR proxy'}</strong><p style="margin:4px 0;font-size:13px">${k==='active'?(x.return>=0?'+':'')+(x.return*100).toFixed(2)+' pp':pctSigned(x.return,2)} · 1 s.d. ${k==='active'?(x.one_sd*100).toFixed(2)+' pp':pct(x.one_sd,2)} · <strong data-risk-units>${riskUnits(x.units)}</strong></p>${riskGauge(x.units)}</div>`}).join('')}${p.status==='ok'?`<p class="attr-prose">${p.sessions} session(s); ${p.observations} prior matched daily returns, ${esc(p.training_start)} to ${esc(p.training_end)}; ${p.excluded_gaps} gap observations excluded.</p>`:''}</div>`).join('')}</div><p class="attr-prose">${esc(context.method)} Source: published model NAV and S&amp;P 500 TR proxy (SPY adjusted close).</p></div>`;
+}
 function renderPerformance(){
   const s=DS.stats, eq=DS.equity;
   const el=document.getElementById('tabContent');
-  el.innerHTML = `
+  el.innerHTML = `${renderReturnContext()}
     <div class="card">
       <div class="card-h">
         <div class="card-title">Cumulative return — model vs benchmarks</div>
