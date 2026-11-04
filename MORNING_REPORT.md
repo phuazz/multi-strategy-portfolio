@@ -49,6 +49,14 @@ adds full risk ratios, benchmark-relative statistics, valuation windows, sources
 methodology. Both derive from the same report object. Source and dashboard links are
 clickable. The plain-text alternative remains available for email clients.
 
+Colour and data bars support scanning: green/red for signed returns and contributions,
+blue for NAV weights and teal for estimated risk shares. Absolute-return bars use one
+common scale across the performance table, with equal rendered track lengths; signs
+remain explicit. Weight and risk tracks each span 0-100%, with their distinct
+denominators stated. Missing risk shares have no bar. The drawdown track ends at the
+historical maximum, labelled as context rather than a risk limit. A delayed-data notice
+uses amber. Colours do not substitute for numbers or state labels.
+
 Holding contributions use current weights and are explicitly approximate. Their
 residual is shown; quote-date and FX differences are not attributed to trading skill.
 Backtested history, engine-labelled out-of-sample performance and a live extension

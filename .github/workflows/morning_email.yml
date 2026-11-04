@@ -38,7 +38,7 @@ jobs:
       - name: Install the layout-check browser
         run: python -m playwright install --with-deps chromium
       - name: Verify the delivery guards
-        run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py -q
+        run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py tests/test_morning_visuals.py -q
       - name: Check deployed data and deliver once
         env:
           GITHUB_TOKEN: ${{ github.token }}
