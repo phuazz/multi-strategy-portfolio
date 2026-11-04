@@ -1,0 +1,56 @@
+name: Morning portfolio email
+
+on:
+  schedule:
+    # UTC; Singapore is UTC+8 with no daylight-saving change.
+    - cron: '0,15,30,45 1-2 * * 2-6'  # 09:00 target; quarter-hour readiness checks
+    - cron: '0 3-15 * * 2-6'           # 11:00 delay notice; hourly recovery to 23:00
+  workflow_run:
+    workflows: ['Daily monitor refresh', 'pages-build-deployment']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: morning-portfolio-email
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-mail.txt
+      - name: Install reporting dependencies
+        run: pip install -r requirements-mail.txt pytest
+      - name: Install the layout-check browser
+        run: python -m playwright install --with-deps chromium
+      - name: Verify the delivery guards
+        run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py -q
+      - name: Check deployed data and deliver once
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MORNING_REPORT_TO: ${{ secrets.MORNING_REPORT_TO }}
+        run: python scripts/deliver_morning.py --send
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-email-check-${{ github.run_id }}
+          path: data/morning-email/
+          retention-days: 7
+          if-no-files-found: ignore

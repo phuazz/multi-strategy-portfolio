@@ -202,5 +202,11 @@ breadth panel. Every build:
 
 ## Related
 
+The [morning email](MORNING_REPORT.md) is delivered by GitHub after the deployed NAV,
+benchmarks and portfolio coverage pass freshness checks. It targets 09:00 Singapore
+time Tuesday-Saturday, sends a delay notice from 11:00 if needed, and attaches a
+two-page A4 review once fresh data is ready. GitHub scheduling delays can shift
+delivery. The local Codex email schedule is paused to prevent duplicate delivery.
+
 - [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) — the strategy engine (upstream source).
 - [DESIGN.md](DESIGN.md) — target architecture for the monitor as a multi-strategy valuation layer (engines generate, the monitor values), and the contract each engine must publish. Proposal; the thin-renderer path above remains production until it lands.

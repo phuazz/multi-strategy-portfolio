@@ -1,0 +1,6 @@
+-r requirements.txt
+reportlab>=4.2,<5
+pypdf>=5,<7
+tzdata>=2024.1
+playwright>=1.48,<2
+PyMuPDF>=1.24,<2
