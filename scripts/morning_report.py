@@ -78,7 +78,7 @@ def relative_stats(s, b):
                 information_ratio=float(active.mean() / sd * np.sqrt(252)) if sd > 0 else None)
 
 
-def build(d, now):
+def build(d, now, market_context=None):
     if now.tzinfo is None:
         raise ValueError('Timezone-aware clock required')
     meta, eq = d['meta'], d['equity']
@@ -209,6 +209,16 @@ def build(d, now):
         attribution={'version':2,'asOf':str(end.date()),'method':'Historical attribution awaits the next verified dataset build.',
                      'periods':{h:{'start':None,'end':str(end.date()),'status':'unavailable','issues':['Historical attribution is not yet published'],'etf':[],'strategy':[]} for h in ('1D','1M')}}
         lines.append(attribution['method'])
+    etf_context=d.get('etf_return_context')
+    if etf_context:
+        from etf_return_context import validate as validate_etf_context,leaders as etf_leaders
+        validate_etf_context(etf_context,attribution)
+        lines+=['','ETF return context: largest absolute risk-unit moves among current holdings.']
+        for hz in ('1D','1M'):
+            for row in etf_leaders(etf_context,hz):
+                contribution='unavailable' if row['contribution'] is None else f'{row["contribution"]*10000:+.1f} bp'
+                lines.append(f'{hz} {row["name"]} ({row["ticker"]}): ETF return {row["return"]:+.2%}; one s.d. {row["one_sd"]:.2%}; {row["units"]:+.2f}x; portfolio contribution {contribution}.')
+        lines.append(etf_context['method'])
     lines += ['', '5. Exceptions and basis',
               'No trade instructions. Review delayed data, concentration and any pending model changes before acting.',
               f'Dataset health: {d["health"]["level"]}. Source commit: {meta["source_commit"]}.',
@@ -217,13 +227,24 @@ def build(d, now):
               f'Cost assumption in source: {meta.get("cost_assumption_bps","unavailable")}bp; hypothetical performance, with no verification of actual fills, account costs or capacity.',
               'Historical statistics are descriptive, not evidence of future returns. Dates are source-derived and library-checked; flag any disputed valuation date for confirmation.',
               f'Dashboard: {PAGE}', f'Data: {URL}']
-    return {'subject':f'Multi-Strategy morning | {state} | NAV {end:%Y-%m-%d}',
+    report={'subject':f'Multi-Strategy morning | {state} | NAV {end:%Y-%m-%d}',
             'body':'\n'.join(lines), 'expected_session':str(expected), 'nav_date':str(end.date()),
             'status':state, 'generated_at_utc':now.astimezone(timezone.utc).isoformat(),
             'performance':performance,'risk_rows':risk_rows,'relative_rows':relative_rows,'return_context':context,
             'current_dd':rs['current_dd'],'underwater_days':rs['underwater_days'],
             'meta':meta,'regime':regime,'weights':weights,'risk_contributors':risk,
-            'attribution':attribution}
+            'attribution':attribution,'etf_return_context':etf_context}
+    if market_context:
+        from private_market_context import validate
+        report['market_context']=validate(market_context,report['nav_date'],now)
+    from portfolio_commentary import build as build_commentary
+    commentary=build_commentary(report)
+    summary='Portfolio manager commentary | '+report['nav_date']+'\n'+'\n'.join(label+': '+text for label,text in commentary['paragraphs'])
+    summary+='\n'+commentary['provenance']
+    for source in commentary['sources']:
+        summary+='\nSource ['+str(source['number'])+']: '+source['publisher']+' ('+source['type']+') '+source['url']
+    report['body']=summary+'\n\n'+report['body']
+    return report
 
 
 def main():

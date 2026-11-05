@@ -46,8 +46,8 @@ the claim only after verifying it did not send. Do not blindly rerun an uncertai
 The HTML email contains the session/YTD/drawdown figures, matched-period returns,
 a compact risk table, positioning and historical 1D/1M attribution. The A4 PDF
 adds full risk ratios, benchmark-relative statistics, every historical ETF row,
-valuation windows, sources and methodology (normally four pages; guarded at three
-to six; five with the return-context page). Both derive from the same report object. Source and dashboard links are
+valuation windows, sources and methodology (guarded at three to six pages; six
+with portfolio and full ETF risk context). Both derive from the same report object. Source and dashboard links are
 clickable. The plain-text alternative remains available for email clients.
 
 Colour and data bars support scanning: green/red for signed returns and contributions,
@@ -65,6 +65,56 @@ The estimate uses 252 prior matched single-session returns, excludes calendar ga
 and does not use the reported window. Training dates and gap counts travel with
 the figures. This is descriptive risk context, not a z-score or probability band.
 See [RETURN_CONTEXT.md](RETURN_CONTEXT.md). Attribution bars remain in basis points.
+
+ETF-level risk context uses each instrument's full-window USD adjusted return
+and own prior volatility, independently of portfolio weights. The email shows
+the three largest absolute volatility-unit moves among current holdings for each
+horizon, alongside historical contribution in bp. The PDF includes the complete
+ETF comparison. Exited positions retain full-window price context but do not
+enter the email's current-holdings ranking. Income and carry are included, so the
+ratio is not statistical surprise. Per-ETF price and estimation details are
+available on the dashboard; unavailable estimates are not shown as zero.
+
+PDF page 2 is a compact attribution summary: up to five positive and five negative
+ETF contributors for each horizon, all strategy contributions and compact
+reconciliation footnotes. Non-zero contributions are selected separately for each
+sign; no zero-impact names are added to fill a quota. Material unexplained
+residuals remain explicitly flagged. Positioning is condensed to the model state and largest current weights.
+Portfolio risk context follows on page 3; the complete ETF table and own-volatility
+gauges remain in the appendix. A rendered-content guard requires the selected ETF
+leaders and all strategies to fit page 2.
+
+A private portfolio-manager commentary box appears on PDF page 1 and near the top
+of the email. The existing X briefing producer attaches a small structured JSON
+companion to its existing private email. The portfolio job reads the newest three
+matching INBOX messages through Gmail IMAP, using read-only selection and
+BODY.PEEK so it does not mark mail as read. It verifies the exact sender, subject
+prefix, Gmail DMARC result, attachment name, schema, timestamps and NYSE session.
+Only a companion matching the official NAV date can appear. Text is escaped;
+source links are HTTPS. Reported claims, interpretations and qualitative relevance
+remain distinct from the official portfolio contribution calculations.
+
+Configure private secrets `MORNING_BRIEF_SENDER` and `MORNING_BRIEF_SUBJECT`.
+The reader reuses existing `GMAIL_USER` / `GMAIL_APP_PASSWORD`; no new token or
+storage service is required. Missing, stale, malformed or wrong-date context is
+nonfatal: the quantitative report proceeds with context marked unavailable.
+If a valid companion causes a rendering/content-guard failure, the job retries
+once without commentary, reruns every report guard, and records the omission.
+The existing producer runs Monday-Saturday around 07:00 Singapore time, covering
+the Saturday review of the Friday US close. No prior news is recycled.
+The 09:00 target, 11:00 delay notice and durable send ledger remain unchanged.
+
+Contract and producer rules: [X_BRIEFING_CONTRACT.md](X_BRIEFING_CONTRACT.md).
+Preview with `python scripts/deliver_morning.py --preview --market-context
+data/x-briefing/inbox/portfolio-market-context-YYYY-MM-DD.json`.
+Keep all actual companions and previews in ignored `data/`. Never commit them,
+add them to the public dataset/dashboard, upload them as Actions artifacts or
+print them in runner logs. The workflow uploads only content-free `check.json`.
+Use the manual workflow input `context_check_only` for a read-only transport
+check with no email or ledger mutation. It reports a status code only.
+Content guards require every commentary paragraph and source link in both PDF
+and email. A producer schema pass establishes structure and timing, not the truth
+of market claims; source confidence remains visible.
 
 Holding contributions use historical published model holdings, effective after
 their fill-date close. Daily USD contributions are linked using prior official NAV

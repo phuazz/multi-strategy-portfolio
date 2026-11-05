@@ -143,6 +143,10 @@ The Overview and Performance tabs also show 1D/1M returns in prior volatility
 units, with matched benchmark excess scaled by tracking error. The email and PDF
 use the same method. [RETURN_CONTEXT.md](RETURN_CONTEXT.md) defines the lagged
 252-observation estimate, gap exclusions and interpretation limits.
+The Attribution tab adds each ETF's 1D/1M USD return relative to its own prior
+volatility, with current-holdings and exited-position views. Historical portfolio
+impact remains separately labelled in bp. The email highlights current holdings
+with the largest absolute volatility-unit moves; the PDF carries the full table.
 
 ## Build & develop
 
@@ -221,6 +225,11 @@ breadth panel. Every build:
   feed's `computed_at` for provenance.
 
 ## Related
+
+The private [X briefing companion](X_BRIEFING_CONTRACT.md) supplies date-matched
+market commentary to the email and PDF only. Actual research stays outside the
+public repository, dashboard and Actions artifacts; missing context does not
+block a fresh quantitative report.
 
 The [morning email](MORNING_REPORT.md) is delivered by GitHub after the deployed NAV,
 benchmarks and portfolio coverage pass freshness checks. It targets 09:00 Singapore

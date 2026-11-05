@@ -80,9 +80,27 @@ def verify_attribution_content(report, pdf_path, html_path):
     from attribution_presentation import comparison_rows, bp, leaders
     with fitz.open(pdf_path) as doc:
         text=' '.join(' '.join(p.get_text() for p in doc).split())
+        page_one=' '.join(doc[0].get_text().split())
+        page_two=' '.join(doc[1].get_text().split())
+        links=[link.get('uri') for page in doc for link in page.get_links()]
+    assert 'What drove the return?' in page_two and 'Reconciliation 1D:' in page_two and 'Reconciliation 1M:' in page_two,'Attribution summary must fit page 2'
+    for horizon in ('1D','1M'):
+        for side in ('positive','negative'):
+            for row in leaders(report['attribution'],horizon)[side][:5]:
+                assert '('+row['ticker']+')' in page_two and bp(row['contrib']) in page_two,'Page 2 ETF leader missing'
+    for row in comparison_rows(report['attribution'],'strategy'):
+        assert row['name'] in page_two,'Page 2 strategy missing'
     html=Path(html_path).read_text(encoding='utf-8')
-    from html import unescape
+    from html import unescape, escape
     email=' '.join(unescape(re.sub('<[^>]+>', ' ', html)).split())
+    from portfolio_commentary import build as build_commentary
+    commentary=build_commentary(report)
+    assert 'Portfolio manager commentary' in page_one and 'Portfolio manager commentary' in email
+    for label,paragraph in commentary['paragraphs']:
+        expected=' '.join((label+'. '+paragraph).split())
+        assert expected in page_one and expected in email,'Commentary text missing or split beyond page 1'
+    for source in commentary['sources']:
+        assert source['url'] in links and escape(source['url'],quote=True) in html,'Market source link missing'
     attribution=report['attribution']
     etfs=comparison_rows(attribution,'etf')
     for row in etfs:
@@ -102,6 +120,19 @@ def verify_attribution_content(report, pdf_path, html_path):
         assert 'Return context and risk' in text and 'How large was the move relative to risk?' in email
         for row in rows(report['return_context']):
             assert RiskMove(row['units']).text in text and RiskMove(row['units']).text in email,'Risk-unit label missing'
+    if report.get('etf_return_context'):
+        from etf_return_context import leaders as etf_leaders
+        from return_context_visuals import RiskMove
+        context=report['etf_return_context']
+        for hz,p in context['periods'].items():
+            for row in p['rows']:
+                assert '('+row['ticker']+')' in text,'ETF risk row absent from PDF'
+                label=RiskMove(row['units']).text if row['units'] is not None else 'Risk units unavailable'
+                assert label in text,'ETF risk-unit label absent from PDF'
+            for row in etf_leaders(context,hz):
+                assert row['ticker'] in email and RiskMove(row['units']).text in email,'ETF risk leader absent from email'
+        assert 'ETF moves relative to their own risk' in email
+        assert len(html.encode('utf-8'))<100_000,'Email risks Gmail clipping'
     return {'etf_rows':len(etfs),'horizons':['1D','1M'],'rendered_content':'pass'}
 
 

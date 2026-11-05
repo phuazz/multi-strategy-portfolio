@@ -25,6 +25,7 @@ import validate  # noqa: E402
 import valuation  # noqa: E402
 import historical_attribution  # noqa: E402
 import return_context  # noqa: E402
+import etf_return_context  # noqa: E402
 from benchmarks import build_benchmarks_awaiting_tail  # noqa: E402,F401
 from config import (ACTIVE_PORTFOLIO_IDS, BENCH_TAIL_WAIT_ATTEMPTS,  # noqa: E402
                     BENCH_TAIL_WAIT_SECONDS, DATA_DIR, DOCS_DATA_DIR, DOCS_INDEX,
@@ -76,6 +77,7 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
     # Attribute the exact NAV precision published to the browser and email.
     attribution_nav = pd.Series([adapter._r(v) for v in model_full], index=model_full.index)
     attribution = historical_attribution.build(bundle, reg, attribution_nav, attribution_panel)
+    etf_context=etf_return_context.build(attribution,attribution_panel,reg,weights['rows'])
     spy=equity['benchmarks'].get('SPY',{})
     context=return_context.build(attribution_nav, pd.Series(spy['equity'],index=pd.to_datetime(spy['dates'])) if spy else None)
     pnl = adapter.build_pnl(model_full, benchmarks)
@@ -119,7 +121,8 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
 
     dataset = {
         "meta": meta, "weights": weights, "equity": equity, "stats": stats,
-        "regime": regime, "attribution": attribution, "return_context":context, "risk": risk, "pnl": pnl,
+        "regime": regime, "attribution": attribution, "return_context":context,
+        "etf_return_context":etf_context, "risk": risk, "pnl": pnl,
         "holdings_prices": holdings_prices, "signals": signals, "trades": trades,
         "monthly": monthly, "changes": changes, "health": health,
     }

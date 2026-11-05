@@ -9,6 +9,11 @@ on:
     workflows: ['Daily monitor refresh', 'pages-build-deployment']
     types: [completed]
   workflow_dispatch:
+    inputs:
+      context_check_only:
+        description: 'Read-only private briefing transport check; no email'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -38,19 +43,28 @@ jobs:
       - name: Install the layout-check browser
         run: python -m playwright install --with-deps chromium
       - name: Verify the delivery guards
-        run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py tests/test_morning_visuals.py tests/test_historical_attribution.py tests/test_return_context.py -q
+        run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py tests/test_morning_visuals.py tests/test_historical_attribution.py tests/test_return_context.py tests/test_etf_return_context.py tests/test_portfolio_commentary.py tests/test_private_market_context.py -q
       - name: Check deployed data and deliver once
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MORNING_REPORT_TO: ${{ secrets.MORNING_REPORT_TO }}
-        run: python scripts/deliver_morning.py --send
-      - name: Preserve verification evidence
+          MORNING_BRIEF_SENDER: ${{ secrets.MORNING_BRIEF_SENDER }}
+          MORNING_BRIEF_SUBJECT: ${{ secrets.MORNING_BRIEF_SUBJECT }}
+          CONTEXT_CHECK_ONLY: ${{ inputs.context_check_only }}
+        run: |
+          if [ "$CONTEXT_CHECK_ONLY" = "true" ]; then
+            python scripts/deliver_morning.py --check-context
+          else
+            python scripts/deliver_morning.py --send
+          fi
+      - name: Preserve content-free delivery status
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: morning-email-check-${{ github.run_id }}
-          path: data/morning-email/
+          # Never upload email, PDF, JSON companion or rendered screenshots.
+          path: data/morning-email/check.json
           retention-days: 7
           if-no-files-found: ignore

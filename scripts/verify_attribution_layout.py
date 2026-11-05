@@ -43,6 +43,18 @@ def verify(root, output):
                         page.locator('[data-risk-context]').screenshot(path=str(output/f'risk-context-{tab}-{width}.png'))
                 page.evaluate("setTab('attribution')")
                 page.wait_for_function('document.fonts.status === "loaded"')
+                if page.evaluate('Boolean(DS.etf_return_context)'):
+                    for horizon in ('1D','1M'):
+                        for include_exits in (False,True):
+                            page.evaluate('([h,a])=>{setEtfRiskHz(h);setEtfRiskAll(a)}',[horizon,include_exits])
+                            risk=page.evaluate('''()=>[...document.querySelectorAll('.etf-risk-row')].map(e=>{const r=DS.etf_return_context.periods[e.dataset.horizon].rows.find(r=>r.ticker===e.dataset.ticker),bar=e.querySelector('[data-risk-fill]');return {ticker:r.ticker,actual:e.querySelector('[data-etf-units]').textContent,expected:riskUnits(r.units),units:r.units,fraction:bar?bar.getBoundingClientRect().width/bar.parentElement.getBoundingClientRect().width:null}})''')
+                            expected=page.evaluate('([h,a])=>DS.etf_return_context.periods[h].rows.filter(r=>a||r.current_weight>0).length',[horizon,include_exits])
+                            assert len(risk)==expected and not errors,(risk,expected,errors)
+                            for row in risk:
+                                assert row['actual']==row['expected'],row
+                                if row['units'] is not None:assert abs(row['fraction']-min(2.5,abs(row['units']))/5)<.001,row
+                            if not include_exits:page.locator('[data-etf-context]').screenshot(path=str(output/f'etf-risk-{horizon}-{width}.png'))
+                    page.evaluate('()=>{setEtfRiskHz("1D");setEtfRiskAll(false)}')
                 for horizon in ('1D','1M'):
                     for view in ('etf','sleeve','theme'):
                         page.evaluate('([h,v])=>{setAttrHz(h);setAttrView(v)}',[horizon,view])

@@ -26,6 +26,7 @@ from nyse_sessions import last_completed_session
 from portfolio_freshness import evaluate_book
 from render_morning import write_bundle, delay_html
 from source_revision import changed_files, resolve_snapshot
+from private_market_context import fetch as fetch_context
 
 SGT=ZoneInfo('Asia/Singapore')
 STATE_BRANCH='morning-mail-state'
@@ -150,18 +151,44 @@ def send_smtp(subject,body,html,pdf,message_id):
         if rejected: raise RuntimeError('SMTP rejected the recipient')
 
 
+def verified_bundle(report, out, dataset, now):
+    """A context layout failure must not suppress an otherwise valid report."""
+    from verify_mail_layout import verify_html, verify_pdf, verify_attribution_content
+    def verify(r):
+        write_bundle(r,out)
+        verify_html(out/'report.html')
+        verify_pdf(out/'portfolio-review.pdf')
+        verify_attribution_content(r,out/'portfolio-review.pdf',out/'report.html')
+    try:verify(report)
+    except Exception:
+        if not report.get('market_context'):raise
+        report=build(dataset,now)
+        verify(report)
+        return report,'omitted_after_render_check'
+    return report,None
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--send',action='store_true')
     ap.add_argument('--preview',action='store_true')
+    ap.add_argument('--check-context',action='store_true',help='Read-only private transport check; no email')
     ap.add_argument('--output',default='data/morning-email')
+    ap.add_argument('--market-context',help='Private local JSON for preview only')
     args=ap.parse_args()
     if args.send and args.preview: raise ValueError('Preview and send are mutually exclusive')
+    if args.check_context and (args.send or args.preview):raise ValueError('Context check cannot send or preview')
+    if args.market_context and not args.preview: raise ValueError('Local context requires preview mode')
     now=datetime.now(timezone.utc)
     if args.send and not delivery_window(now):
         print('outside-window'); return
     expected=last_completed_session(now).isoformat()
     out=Path(args.output); out.mkdir(parents=True,exist_ok=True)
+    if args.check_context:
+        _,status=fetch_context(expected,now)
+        result={'action':'context-check','expected_session':expected,'market_context_status':status,'checked_at_utc':now.isoformat()}
+        (out/'check.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+        print(json.dumps(result));return
     ledger=GitHubLedger() if args.send else None
     report_record=delay_record=None
     if ledger:
@@ -170,7 +197,7 @@ def main():
         delay_record,_=ledger.read(expected+'-delay')
         if report_record and report_record.get('status')=='sent':
             print('already-sent'); return
-    d=None; report=None
+    d=None; report=None; context_status='not_attempted'
     try:
         response=requests.get(URL,params={'mail_check':now.isoformat()},timeout=45)
         response.raise_for_status(); d=response.json()
@@ -181,7 +208,8 @@ def main():
             reasons.append('The deployed page has not yet consumed the latest engine publication')
         # Normal report generation itself guards malformed levels and live anchors.
         if not reasons or args.preview:
-            report=build(d,now)
+            context,context_status=fetch_context(d['meta']['live_asOf'],now,local_path=args.market_context)
+            report=build(d,now,market_context=context)
     except Exception as exc:
         reasons=[f'Data verification failed ({type(exc).__name__})']
         if args.preview: raise
@@ -191,16 +219,16 @@ def main():
         (out/'delay.html').write_text(delay_html(expected,reasons or ['Illustrative delayed-data notice']),encoding='utf-8')
         (out/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
         print('Preview only; no email sent'); return
-    result={'action':action,'expected_session':expected,'reasons':reasons,'checked_at_utc':now.isoformat()}
+    result={'action':action,'expected_session':expected,'reasons':reasons,'checked_at_utc':now.isoformat(),'market_context_status':context_status}
     (out/'check.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(result))
     if not args.send or action not in ('report','delay'): return
     if action=='report':
-        write_bundle(report,out)
-        from verify_mail_layout import verify_html, verify_pdf, verify_attribution_content
-        verify_html(out/'report.html')
-        verify_pdf(out/'portfolio-review.pdf')
-        verify_attribution_content(report,out/'portfolio-review.pdf',out/'report.html')
+        report,omitted=verified_bundle(report,out,d,now)
+        if omitted:
+            result['market_context_status']=omitted
+            (out/'check.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+            print(json.dumps(result))
         html=(out/'report.html').read_text(encoding='utf-8')
         from pypdf import PdfReader
         pdf=out/'portfolio-review.pdf'
@@ -219,4 +247,10 @@ def main():
         deliver_once(ledger,expected+'-delay',subject,body,html,None,send_smtp,now)
 
 
-if __name__=='__main__': main()
+if __name__=='__main__':
+    try:main()
+    except Exception:
+        # Renderers can include document text in exceptions. Public CI must not.
+        if os.environ.get('GITHUB_ACTIONS')=='true':
+            raise SystemExit('Private report operation failed; inspect delivery status before retrying') from None
+        raise

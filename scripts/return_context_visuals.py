@@ -15,6 +15,12 @@ class RiskMove:
         return units(self.value)+(' (beyond scale)' if self.value is not None and abs(self.value)>LIMIT else '')
 
 
+@dataclass(frozen=True)
+class ETFMove:
+    contribution: float | None
+    detail: dict | None
+
+
 def segments(value):
     capped=max(-LIMIT,min(LIMIT,value))
     left,right=sorted((0,capped))
@@ -59,3 +65,23 @@ def context_html(context):
             body+=f'<p style="margin-bottom:4px"><strong>{escape(row["label"])}</strong><br>{actual} · 1 s.d. {risk} · <strong>{RiskMove(row["units"]).text}</strong></p>'+gauge(row['units'])
         body+=f'<p class="small">{p["sessions"]} session(s). Estimate: {p["observations"]} matched daily returns, {p["training_start"]} to {p["training_end"]}; {p["excluded_gaps"]} missing or multi-session observations excluded. Source: published model NAV and SPY adjusted-close proxy.</p></div>'
     return body+'<p class="small">'+escape(context['method'])+'</p>'
+
+
+def etf_context_html(context):
+    if not context:return ''
+    from etf_return_context import leaders
+    from attribution_presentation import bp
+    body='<h2>ETF moves relative to their own risk</h2><p class="small">Three largest absolute volatility-unit moves among current holdings, separately for 1D and 1M. ETF return covers the full window; contribution reflects historical holdings. Income and carry remain in the ratio: this is not a surprise score. Tracks use the same ±2.5 scale, with ±1 and ±2 markers.</p>'
+    for hz,p in context['periods'].items():
+        selected=leaders(context,hz)
+        body+=f'<h3 style="font-size:16px">{hz} · {escape(str(p["start"]))} to {escape(p["end"])}</h3>'
+        current=[x for x in p['rows'] if x['current_weight']>0]
+        available=sum(x['units'] is not None for x in current)
+        body+=f'<p class="small">Risk estimates available for {available} of {len(current)} current holdings. Missing estimates are excluded from ranking.</p>'
+        for r in selected:
+            proxy='; priced as '+r['price_symbol'] if r['price_symbol']!=r['ticker'] else ''
+            body+=f'<div style="background:#ffffff;border:1px solid #e2e0d8;padding:12px;margin:12px 0"><strong>{escape(r["name"])} ({escape(r["ticker"])})</strong><p style="margin:4px 0">ETF {r["return"]:+.2%} · 1 s.d. {r["one_sd"]:.2%} · <strong>{RiskMove(r["units"]).text}</strong><br>Portfolio contribution: {bp(r["contribution"])}</p>'+gauge(r['units'])
+            body+=f'<p class="small" style="margin-bottom:0">252 prior USD valuation returns: {r["training_start"]} to {r["training_end"]}; {r["excluded_gaps"]} gaps excluded{escape(proxy)}.</p></div>'
+        if not selected:body+='<p>No current holding has a verified risk estimate for this window.</p>'
+    body+='<p class="small">Source: adjusted ETF/proxy closes and same-date FX, on the NYSE valuation clock. Local closes are asynchronous. Full ETF detail, including exits and unavailable estimates, is in the PDF and dashboard. '+escape(context['method'])+'</p>'
+    return body

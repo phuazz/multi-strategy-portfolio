@@ -146,7 +146,8 @@ def fetch_panel(bundle, registry, end, *, fetch=True):
     if fetch:
         try:
             import yfinance as yf
-            start = pd.Timestamp(end)-pd.DateOffset(months=2)
+            # Include enough pre-window history for the ETF risk-context estimate.
+            start = pd.Timestamp(end)-pd.DateOffset(months=18)
             raw = yf.download(requested, start=str(start.date()), end=str((pd.Timestamp(end)+pd.Timedelta(days=1)).date()),
                               auto_adjust=True, progress=False, threads=False)
             close = raw['Close'] if isinstance(raw.columns,pd.MultiIndex) else raw[['Close']].rename(columns={'Close':requested[0]})
