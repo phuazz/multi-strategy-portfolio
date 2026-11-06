@@ -1,9 +1,14 @@
-"""Recovery bounds and stop conditions, with no sleeps or GitHub writes."""
+"""Recovery is one source probe per trigger, without a self-dispatch chain."""
+import copy
 import json
+import time
+import urllib.request
+from pathlib import Path
 
 import pytest
 
 import catchup_refresh as catchup
+import sync_source
 
 
 def dataset(*, price="stale", book="ok", strategy="ok"):
@@ -14,119 +19,88 @@ def dataset(*, price="stale", book="ok", strategy="ok"):
     ]}}
 
 
-@pytest.mark.parametrize("price,book,expected", [("ok","ok",False), ("stale","ok",True),
-                                                ("ok","stale",True)])
-def test_only_missing_daily_or_core_book_coverage_starts_recovery(price, book, expected):
+@pytest.mark.parametrize("price,book,expected", [("ok", "ok", False), ("stale", "ok", True),
+                                                ("ok", "stale", True)])
+def test_only_daily_or_core_book_coverage_needs_recovery(price, book, expected):
     assert catchup.needs_catchup(dataset(price=price, book=book)) is expected
 
 
-def test_other_stale_feeds_do_not_create_an_unrelated_retry_loop():
+def test_other_stale_feeds_are_not_recoverable_by_a_daily_refresh():
     assert not catchup.needs_catchup(dataset(price="ok", strategy="stale"))
 
 
-def test_recovery_is_bounded_and_last_fresh_run_stops_cleanly():
-    for attempt in range(catchup.MAX_ATTEMPTS):
-        assert catchup.next_attempt(dataset(), attempt) == attempt + 1
-    with pytest.raises(RuntimeError, match="limit reached"):
-        catchup.next_attempt(dataset(), catchup.MAX_ATTEMPTS)
-    assert catchup.next_attempt(dataset(price="ok"), catchup.MAX_ATTEMPTS) is None
+def test_absent_health_is_not_reported_as_current(monkeypatch, capsys):
+    monkeypatch.setattr(catchup, "load_dataset", lambda pid: {})
+    monkeypatch.setattr("sys.argv", ["catchup_refresh.py", "schedule"])
+    assert catchup.main() == 0
+    report = capsys.readouterr().out
+    assert "no stale price/portfolio feed reported" in report
+    assert "current" not in report
+
+
+@pytest.mark.parametrize("mode", ["wait", "schedule"])
+def test_repeated_triggers_and_exhausted_legacy_chains_never_wait_or_dispatch(monkeypatch, mode):
+    blob = dataset()
+    before = copy.deepcopy(blob)
+    monkeypatch.setattr(catchup, "load_dataset", lambda pid: blob)
+    monkeypatch.setattr(time, "sleep", lambda *a: pytest.fail("Sleeping runner"))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("Network dispatch"))
+    for attempt in [*range(9), 0, 0, 8, 0, 0]:
+        monkeypatch.setattr("sys.argv", ["catchup_refresh.py", mode, "--attempt", str(attempt)])
+        assert catchup.main() == 0
+    assert blob == before, "Stale health must not be cleared by a recovery trigger"
 
 
 @pytest.mark.parametrize("attempt", [-1, catchup.MAX_ATTEMPTS + 1])
-def test_invalid_attempt_cannot_start_a_new_chain(attempt):
-    with pytest.raises(ValueError):
-        catchup.next_attempt(dataset(), attempt)
-
-
-def setup_wait(monkeypatch, blob=None):
-    monkeypatch.setattr(catchup, "load_dataset", lambda pid: blob or dataset())
-    monkeypatch.setattr(catchup, "load_registry", lambda pid: {"source": {}})
-
-
-def test_fresh_source_does_not_sleep_or_call_the_api(monkeypatch):
-    setup_wait(monkeypatch, dataset(price="ok"))
-    monkeypatch.setattr(catchup, "resolve_snapshot", lambda *args: pytest.fail("Unnecessary source request"))
-    assert catchup.wait_for_publication("test") == "already-fresh"
-
-
-def test_late_source_is_seen_without_waiting_for_another_cron(monkeypatch):
-    setup_wait(monkeypatch)
-    clock = [0]
-    calls = [0]
-
-    def source(_):
-        calls[0] += 1
-        return {"files": {"live_track.json": "old" if calls[0] == 1 else "new"}}
-
-    monkeypatch.setattr(catchup, "resolve_snapshot", source)
-    sleeps = []
-
-    def sleep(seconds):
-        sleeps.append(seconds)
-        clock[0] += seconds
-
-    assert catchup.wait_for_publication("test", 120, clock=lambda: clock[0], sleep=sleep) == "source-changed"
-    assert sleeps == [60]
-
-
-def test_unchanged_source_exhausts_only_its_bounded_wait_budget(monkeypatch):
-    setup_wait(monkeypatch)
-    monkeypatch.setattr(catchup, "resolve_snapshot", lambda src: {"files": {"live_track.json": "old"}})
-    clock = [0]
-    sleeps = []
-
-    def sleep(seconds):
-        sleeps.append(seconds)
-        clock[0] += seconds
-
-    assert catchup.wait_for_publication("test", 65, clock=lambda: clock[0], sleep=sleep) == "wait-budget-exhausted"
-    assert sleeps == [60, 5] and clock[0] == 65
-
-
-def test_source_check_failure_is_not_interpreted_as_no_change(monkeypatch):
-    setup_wait(monkeypatch)
-
-    def failed(src):
-        raise OSError("API unavailable")
-
-    monkeypatch.setattr(catchup, "resolve_snapshot", failed)
-    with pytest.raises(OSError, match="unavailable"):
-        catchup.wait_for_publication("test", timeout=0)
-
-
-def test_dispatch_targets_only_the_existing_monitor_workflow(monkeypatch):
-    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/monitor")
-    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-token")
-    requests = []
-
-    class Response:
-        status = 204
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
-
-    def open_request(request, timeout):
-        requests.append(request)
-        return Response()
-
-    monkeypatch.setattr(catchup.urllib.request, "urlopen", open_request)
-    catchup.dispatch(1)
-    assert requests[0].full_url.endswith("/owner/monitor/actions/workflows/daily_monitor.yml/dispatches")
-    assert json.loads(requests[0].data) == {"ref": "main", "inputs": {"catchup_attempt": "1"}}
-
-
-@pytest.mark.parametrize("fresh,expected", [(False,[1]),(True,[])])
-def test_schedule_dispatches_only_when_needed(monkeypatch, fresh, expected):
-    monkeypatch.setattr(catchup, "load_dataset", lambda pid: dataset(price="ok" if fresh else "stale"))
-    requested = []
-    monkeypatch.setattr(catchup, "dispatch", requested.append)
-    monkeypatch.setattr("sys.argv", ["catchup_refresh.py", "schedule", "--attempt", "0"])
-    assert catchup.main() == 0
-    assert requested == expected
-
-
-def test_maximum_attempt_cannot_dispatch_a_ninth_followup(monkeypatch):
-    monkeypatch.setattr(catchup, "load_dataset", lambda pid: dataset())
-    monkeypatch.setattr(catchup, "dispatch", lambda *args: pytest.fail("Exceeded retry limit"))
-    monkeypatch.setattr("sys.argv", ["catchup_refresh.py", "schedule", "--attempt", str(catchup.MAX_ATTEMPTS)])
-    with pytest.raises(RuntimeError, match="operator action required"):
+def test_invalid_legacy_attempt_is_rejected(monkeypatch, attempt):
+    monkeypatch.setattr("sys.argv", ["catchup_refresh.py", "schedule", "--attempt", str(attempt)])
+    with pytest.raises(ValueError, match="Invalid"):
         catchup.main()
+
+
+def test_later_publication_is_detected_after_any_number_of_unchanged_triggers(monkeypatch, tmp_path):
+    path = tmp_path / "dataset.json"
+    blob = dataset()
+    path.write_text(json.dumps(blob))
+    output = tmp_path / "outputs"
+    snapshot = {"commit": "unrelated-head", "files": {"live_track.json": "old"}}
+    monkeypatch.setattr(sync_source, "ACTIVE_PORTFOLIO_IDS", ["paper"])
+    monkeypatch.setattr(sync_source, "load_registry", lambda pid: {"source": {}})
+    monkeypatch.setattr(sync_source, "dataset_path", lambda pid: path)
+    monkeypatch.setattr(sync_source, "resolve_snapshot", lambda src: snapshot)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setattr("sys.argv", ["sync_source.py", "--only-if-changed"])
+    for _ in range(12):
+        assert sync_source.main() == 0
+        assert output.read_text().splitlines()[-1] == "rebuild=false"
+    snapshot["files"]["live_track.json"] = "recovered"
+    assert sync_source.main() == 0
+    assert output.read_text().splitlines()[-1] == "rebuild=true"
+    assert json.loads(path.read_text()) == blob  # probe cannot assert freshness
+    # Simulate successful validated consumption of the new bytes.
+    blob["meta"]["source_blobs"]["live_track.json"] = "recovered"
+    path.write_text(json.dumps(blob))
+    assert sync_source.main() == 0
+    assert output.read_text().splitlines()[-1] == "rebuild=false"
+
+
+def test_probe_api_failure_is_not_treated_as_unchanged(monkeypatch):
+    def fail(src):
+        raise OSError("API unavailable")
+    monkeypatch.setattr(sync_source, "resolve_snapshot", fail)
+    monkeypatch.setattr("sys.argv", ["sync_source.py", "--only-if-changed"])
+    with pytest.raises(OSError, match="API unavailable"):
+        sync_source.main()
+
+
+def test_workflow_retains_probe_and_publication_guards_without_a_dispatch_loop():
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/daily_monitor.yml").read_text()
+    assert "cron: '17 * * * *'" in workflow
+    assert "python scripts/sync_source.py --only-if-changed" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "ref: main" in workflow
+    for command in ["pipeline.py", "pytest tests/ -q", "check_capture_integrity.py"]:
+        assert command in workflow
+    assert "actions: write" not in workflow
+    assert "catchup_refresh.py wait" not in workflow
+    assert "gh workflow run" not in workflow

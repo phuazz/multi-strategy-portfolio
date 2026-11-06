@@ -31,6 +31,9 @@ name: Daily monitor refresh
 # Hourly probes close the daily-build/post-fill ordering race. They install no
 # dependencies and rebuild only when a consumed engine blob has changed.
 # GitHub may delay cron delivery; the sentinel enforces the separate sync budget.
+# Recovery uses these probes too. Self-dispatch chains reset their attempt count
+# on every scheduled run, so their per-chain limit did not bound stale incidents.
+# Unchanged blobs now cost one probe, with no sleeping runner or follow-up run.
 
 on:
   schedule:
@@ -40,13 +43,12 @@ on:
   workflow_dispatch:
     inputs:
       catchup_attempt:
-        description: 'Bounded stale-data recovery attempt; leave 0 for a normal refresh'
+        description: 'Legacy compatibility input; positive values perform one source-change probe'
         type: number
         default: 0
 
 permissions:
   contents: write
-  actions: write             # dispatch a bounded follow-up after a stale capture
 
 env:
   CATCHUP_ATTEMPT: ${{ inputs.catchup_attempt || 0 }}
@@ -58,8 +60,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Includes a 20-minute source wait on follow-ups and the existing
-    # 24-minute benchmark-tail budget, plus setup, build and tests.
+    # Retains headroom for the existing 24-minute benchmark-tail budget,
+    # plus setup, build and tests. Source probes do not wait or self-dispatch.
     timeout-minutes: 65
     steps:
       - name: Checkout
@@ -67,12 +69,6 @@ jobs:
         with:
           fetch-depth: 1
           ref: main
-
-      - name: Wait for a delayed engine publication
-        if: env.CATCHUP_ATTEMPT != '0'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/catchup_refresh.py wait --attempt "$CATCHUP_ATTEMPT"
 
       - name: Check for a new engine publication
         id: source
@@ -162,9 +158,7 @@ jobs:
           echo "::error::Monitor output could not be pushed after 3 attempts."
           exit 1
 
-      - name: Recover a late engine publication
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Report upstream recovery status
         run: python scripts/catchup_refresh.py schedule --attempt "$CATCHUP_ATTEMPT"
 
       # ----- Failure alert (2026-07-03) -----
