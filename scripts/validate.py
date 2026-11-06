@@ -33,7 +33,7 @@ import datetime as dt
 
 import numpy as np
 
-from nyse_sessions import last_completed_session, sessions_behind
+from nyse_sessions import last_completed_session, next_session_close, sessions_behind
 from portfolio_freshness import evaluate_book
 
 _RANK = {"ok": 0, "warn": 1, "stale": 2}
@@ -59,6 +59,9 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     engine-type benchmark gets a feed row judged against the NAV's own as-of."""
     fb = registry["freshness"]
     now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
+    if now_utc.tzinfo is None or now_utc.utcoffset() is None:
+        raise ValueError("now_utc must be timezone-aware (UTC)")
+    now_utc = now_utc.astimezone(dt.timezone.utc)
     live = bundle["live_track.json"]
     overlay = bundle["risk_overlay.json"]
     multi = bundle["multi_strategy.json"]
@@ -184,6 +187,27 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     elif not reconcile.get("ok", True) and _RANK[level] < _RANK["warn"]:
         level = "warn"
 
+    # Only validity lookup failures are contained here. Current-health calendar
+    # errors above still propagate. Expiry does not change the baked verdict.
+    validity = {"checked_at_utc": now_utc.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "valid_until_utc": None}
+    if run_date != now_utc.date():
+        validity["validity_error"] = (
+            f"run_date {run_date.isoformat()} differs from validation UTC date "
+            f"{now_utc.date().isoformat()}")
+    else:
+        try:
+            close = next_session_close(now_utc)
+            if close.tzinfo is None or close.utcoffset() is None or close <= now_utc:
+                raise ValueError("next NYSE close must be aware and strictly future")
+            # Python datetime months are 1-indexed; timedelta handles rollovers.
+            midnight = dt.datetime.combine(now_utc.date() + dt.timedelta(days=1),
+                                           dt.time.min, tzinfo=dt.timezone.utc)
+            deadline = min(close.astimezone(dt.timezone.utc), midnight)
+            validity["valid_until_utc"] = deadline.isoformat(timespec="seconds").replace("+00:00", "Z")
+        except Exception as exc:
+            validity["validity_error"] = f"Cannot determine next NYSE close: {type(exc).__name__}: {exc}"
+
     return {
         "level": level,
         "ok": level == "ok",
@@ -194,4 +218,5 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         "messages": messages,
         "source_commit": bundle.get("source_commit"),
         "checked_at": run_date.isoformat(),
+        **validity,
     }

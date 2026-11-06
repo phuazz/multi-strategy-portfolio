@@ -50,6 +50,28 @@ def last_completed_session(now_utc: datetime) -> date:
     return completed.index[-1].date()
 
 
+def next_session_close(now_utc: datetime) -> datetime:
+    """First NYSE close strictly after the supplied aware instant, in UTC.
+
+    The exchange schedule supplies holidays, early closes and DST changes.
+    Python datetime months are 1-indexed (January = 1).
+    """
+    if now_utc.tzinfo is None or now_utc.utcoffset() is None:
+        raise ValueError("now_utc must be timezone-aware (UTC)")
+    now_utc = now_utc.astimezone(timezone.utc)
+    sched = _NYSE.schedule(
+        start_date=now_utc.date().isoformat(),
+        end_date=(now_utc + timedelta(days=15)).date().isoformat(),
+    )
+    future = sched.loc[sched["market_close"] > now_utc, "market_close"]
+    if future.empty:
+        raise RuntimeError(
+            "no future NYSE close in the next 15 days - clock or "
+            "calendar data is broken"
+        )
+    return future.min().to_pydatetime().astimezone(timezone.utc)
+
+
 def sessions_behind(series_end: date, expected: date) -> int:
     """Number of NYSE sessions strictly after ``series_end`` up to and
     including ``expected``. 0 means the series is current (or ahead)."""

@@ -323,26 +323,87 @@ async function bootstrap(){
   }
   state.benchmarks = Object.keys(DS.equity.benchmarks||{}).filter(k=>DS.equity.benchmarks[k].default);
   if(!state.benchmarks.length) state.benchmarks=['SPY'];
-  renderMasthead(); renderHeadline(); renderKPIs(); renderStaleBanner(); renderTabBar(); renderFooter(); renderTab();
+  renderHeadline(); renderKPIs(); renderTabBar(); renderFooter(); renderTab(); startHealthClock();
 }
 
+/* HEALTH_CLOCK_START
+   A build-time verdict is not a live freshness assertion. Browser time only
+   removes confidence; it never changes NAV, provenance or the stored dataset.
+   JavaScript Date uses UTC parsing here; numeric months are not constructed. */
+function healthUtcMillis(value){
+  if(typeof value!=='string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) return null;
+  const ms=Date.parse(value);
+  return Number.isFinite(ms) && new Date(ms).toISOString()===value.slice(0,-1)+'.000Z' ? ms : null;
+}
+function effectiveHealth(dataset, nowMs=Date.now()){
+  const original=dataset.health||{};
+  const level=['ok','warn','stale'].includes(original.level)?original.level:'warn';
+  const h={...original,level,feeds:(original.feeds||[]).map(f=>({...f})),messages:[...(original.messages||[])]};
+  const checked=healthUtcMillis(original.checked_at_utc), until=healthUtcMillis(original.valid_until_utc);
+  const valid=Number.isFinite(nowMs) && checked!==null && until!==null && until>checked &&
+    checked<=nowMs && nowMs<until && until-checked<=86400000 &&
+    original.checked_at===original.checked_at_utc.slice(0,10) && !original.validity_error;
+  const stamp=value=>value.replace('T',' ').replace('Z',' UTC');
+  const built=healthUtcMillis((dataset.meta||{}).built_at_utc);
+  const lastCheck=checked!==null?'Last health check: '+stamp(original.checked_at_utc)+'.':
+    built!==null?'Dataset built: '+stamp(dataset.meta.built_at_utc)+'; health-check time unavailable.':
+    'Health-check time unavailable.';
+  h.assessment_current=valid;
+  h.assessment_note=valid?'Health checked '+stamp(original.checked_at_utc)+
+    '; valid before '+stamp(original.valid_until_utc)+' using this browser clock.':lastCheck;
+  h.assessment_expired=checked!==null && until!==null && until>checked && Number.isFinite(nowMs) && nowMs>=until;
+  if(valid) return h;
+  h.level=level==='stale'?'stale':'warn'; h.ok=false;
+  const reason=checked!==null && Number.isFinite(nowMs) && checked>nowMs ?
+    'Current freshness is unverified: the recorded check is ahead of this browser clock.':
+    h.assessment_expired?'Freshness check expired at '+stamp(original.valid_until_utc)+
+      '. Current feed freshness has not been rechecked.':
+      'Current freshness is unverified: this dataset has no valid health-check expiry.';
+  h.messages.push(reason+' '+lastCheck+' NAV dates and values are unchanged.');
+  h.feeds=h.feeds.map(f=>({...f,level:f.level==='ok'?'warn':f.level,
+    status_label:f.level==='ok'?'UNVERIFIED':String(f.level||'unverified').toUpperCase()}));
+  return h;
+}
+let healthClockTimer=null, healthClockInstalled=false;
+function scheduleHealthClock(){
+  if(healthClockTimer!==null) clearTimeout(healthClockTimer);
+  const now=Date.now(), expiry=healthUtcMillis((DS&&DS.health||{}).valid_until_utc);
+  const delay=expiry!==null && expiry>now ? Math.min(60000,expiry-now) : 60000;
+  healthClockTimer=setTimeout(refreshHealthSurfaces,Math.max(1,delay));
+}
+function refreshHealthSurfaces(){
+  if(!DS || !DS.meta || !DS.health) return;
+  const h=effectiveHealth(DS);
+  renderMasthead(h); renderStaleBanner(h);
+  if(state.tab==='health') renderHealth(h);
+  scheduleHealthClock();
+}
+function startHealthClock(){
+  if(!healthClockInstalled){
+    window.addEventListener('focus',refreshHealthSurfaces);
+    window.addEventListener('pageshow',refreshHealthSurfaces);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden) refreshHealthSurfaces();});
+    healthClockInstalled=true;
+  }
+  refreshHealthSurfaces();
+}
+/* HEALTH_CLOCK_END */
+
 /* ============================ masthead / KPIs ============================ */
-function renderMasthead(){
+function renderMasthead(h=effectiveHealth(DS)){
   const m=DS.meta, rg=DS.regime;
   document.getElementById('mhTitle').textContent = m.name;
   document.getElementById('mhSub').textContent = m.descriptor + ' · weekly-rebalanced · since '+fmtDate(m.inception);
   const onoff = rg.state==='RISK_ON' ? 'on':'off';
-  const hl = DS.health.level;
+  const hl = h.level;
   document.getElementById('mhRight').innerHTML = [
     `<span class="pill pill-paper" title="Paper / model portfolio — not live capital">● Paper model</span>`,
     `<span class="pill pill-${onoff}" title="Breadth de-risk gate state">${rg.state==='RISK_ON'?'Risk-On':'Risk-Off'}</span>`,
     `<span class="pill" title="Latest model NAV date">As of ${fmtDateShort(m.live_asOf||m.asOf)}</span>`,
-    // Scoped deliberately. This pill grades the BAKED dataset — feed freshness,
-    // regime since-date, recomputed statistics — and knows nothing about the
-    // live quote transport, which can be dead while the bake is perfect. A
-    // reader who takes "Data OK" as covering the whole page would take it as a
-    // freshness claim the pill is in no position to make, so it says which.
-    `<span class="pill pill-health-${hl}" title="Integrity of the baked daily dataset. It does not cover the live quote feed — the intraday session tiles report that separately.">${hl==='ok'?'✓ Data OK':hl==='warn'?'⚠ Check data':'✕ Stale'}</span>`,
+    // The checked dataset verdict is usable only before its stamped expiry.
+    // Expiry removes confidence without changing NAV or proving it stale.
+    // Live quote transport is assessed separately by the intraday tiles.
+    `<span class="pill pill-health-${hl}" title="${esc(h.assessment_note)} Live quotes are assessed separately by the intraday session tiles.">${hl==='ok'?'Data OK':hl==='warn'?(h.assessment_expired?'Check expired':'Check data'):'Stale'}</span>`,
   ].join('');
 }
 
@@ -469,8 +530,8 @@ function renderKPIs(){
   document.getElementById('kpiStrip').innerHTML = html;
 }
 
-function renderStaleBanner(){
-  const h=DS.health, el=document.getElementById('staleBanner');
+function renderStaleBanner(h=effectiveHealth(DS)){
+  const el=document.getElementById('staleBanner');
   if(h.level==='ok'){ el.style.display='none'; return; }
   el.className='stale-banner '+(h.level==='stale'?'stale':'warn');
   el.style.display='flex';
@@ -1775,15 +1836,15 @@ function renderBlotter(){
   const cc=document.getElementById('blotCount'); if(cc) cc.textContent=total+' match'+(total===1?'':'es')+(total>250?' · showing 250':'');
 }
 
-function renderHealth(){
-  const h=DS.health, m=DS.meta, rc=DS.stats.reconcile, ch=DS.changes;
-  const lvlTxt={ok:'All checks passed',warn:'Attention — a feed is near its freshness budget',stale:'Stale or inconsistent data detected'}[h.level];
+function renderHealth(h=effectiveHealth(DS)){
+  const m=DS.meta, rc=DS.stats.reconcile, ch=DS.changes;
+  const lvlTxt={ok:'All checks passed',warn:'Attention — check data freshness',stale:'Stale or inconsistent data detected'}[h.level];
   const lvlCls={ok:'pos',warn:'',stale:'neg'}[h.level];
   const feedUnit=f=>((f.basis||'business days').indexOf('session')>=0?'sessions':'bdays');
   const feedRow=f=>`<tr><td>${esc(f.feed)}${f.source?`<br><span class="muted" style="font-size:11px">${esc(f.source)}</span>`:''}</td><td class="num">${fmtDate(f.asOf)}</td>
     <td class="r num" title="Measured in ${esc(f.basis||'business days')}">${f.bday_lag==null?'—':f.bday_lag}</td>
     <td class="r num">${f.budget_bdays} <span class="muted" style="font-size:11px">${feedUnit(f)}</span></td>
-    <td class="c"><span class="pill pill-health-${f.level}" style="padding:2px 8px">${f.level.toUpperCase()}</span></td>
+    <td class="c"><span class="pill pill-health-${f.level}" style="padding:2px 8px">${esc(f.status_label||f.level.toUpperCase())}</span></td>
     <td class="num muted" style="font-size:11px">${esc((f.computed_at||'').replace('T',' ').slice(0,16))}</td></tr>`;
   const recRow=k=>{ const ok=(rc.diffs[k]||0)<=rc.tol[k];
     return `<tr><td>${k}</td><td class="r num">${num(rc.recomputed[k],4)}</td><td class="r num">${num(DS.stats.engine_stats[k],4)}</td>
@@ -1793,12 +1854,13 @@ function renderHealth(){
     <div class="card">
       <div class="card-h"><div class="card-title">Data integrity status</div><span class="pill pill-health-${h.level}">${h.level==='ok'?'✓ OK':h.level==='warn'?'⚠ WARN':'✕ STALE'}</span></div>
       <div style="font-size:18px;font-weight:700;margin-bottom:6px" class="${lvlCls}">${lvlTxt}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">${esc(h.assessment_note)} Feed lags below describe the last build-time check.</div>
       ${h.messages.length?`<ul style="margin:8px 0 0 18px;font-size:13px;color:var(--t2)">${h.messages.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<div class="muted" style="font-size:13px">No warnings. All feeds within budget; regime since-date reconciles with the latest event; recomputed statistics match the engine.</div>'}
       <div class="callout" style="margin-top:14px;font-size:12px">This tab exists because the upstream engine once published a confident regime state on an 11-week-stale breadth panel. The monitor now checks feed freshness — the live NAV against the last completed NYSE session, the weekly feeds against business-day budgets — plus the regime since-date against the latest switch event, and recomputed statistics against the engine's own figures, on every build.</div>
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Feed freshness</div>
-      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r">Lag</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r" title="Lag at the last health check">Lag</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
       <tbody>${h.feeds.map(feedRow).join('')}</tbody></table></div>
       <div class="card-note" style="margin-top:8px">The live NAV refreshes daily and is measured in NYSE sessions against the last completed session — a budget of zero, so one session behind reads STALE. The executed portfolio is checked separately against the latest completed Monday core fill, rolling NYSE holidays forward. Current prices on an older portfolio read STALE. The breadth panel and the strategy-equity backtest keep their wider business-day budgets. The S&amp;P 500 row measures the engine's benchmark export (plus its yfinance extension) in sessions behind the NAV's own as-of: one behind is WARN and every S&amp;P-relative figure carries a date caveat; the series is never forward-filled onto a date it has no bar for.</div>
     </div>
