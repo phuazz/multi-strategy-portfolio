@@ -54,17 +54,27 @@ breadth-thrust-etf (engine)            multi-strategy-portfolio (this repo)
 Source data is fetched from the engine's `main` branch via `raw.githubusercontent.com`
 (the engine is public; it does not publish its `data/*.json` to Pages directly).
 
+**Calendar-aware benchmark valuations.** STI uses the SGX (`XSES`) calendar.
+On a closed SGX date, its USD valuation may use the immediately preceding
+required SGX close, but only with an observed SGD/USD quote on that valuation
+date. The native-close date, FX date and valuation date travel separately in
+the output and Data Health. A missing trading-session close or same-date FX
+quote remains null; a subsequently served or withdrawn bar cannot change the
+validity of an earlier holiday valuation. Missing benchmarks each receive a
+health row. A daily constant-mix benchmark stops at an unobserved leg return
+rather than inventing a zero return or resuming an unknowable path.
+
 **The S&P 500 benchmark is the engine's series (2026-09-06).** `data/benchmark_spy.json` —
 the engine's committed export of adjusted SPY closes, the series behind its weekly email and
 factsheet — is the base of this page's S&P curve; yfinance only chains daily returns after
 the export's last date (the export refreshes with the engine's local Tue/Wed/Sat/Sun runs,
 so mid-week the extension is one to three sessions). Both surfaces therefore carry one S&P
 figure by construction, and the page reconciles to the email, never the reverse. No
-benchmark is forward-filled onto a date it has no bar for: on 2026-09-05 the 01:22 UTC
+benchmark is forward-filled across a missing trading-day close: on 2026-09-05 the 01:22 UTC
 fetch received no Friday SPY bar, the old alignment carried Thursday's close onto Friday's
 date, and the page printed S&P YTD +13.1% against the model's Friday mark while the email
-said +12.7%. A benchmark now ends at its own last served close, carries `asOf`, and Data
-Health scores it in NYSE sessions behind the NAV (one behind = WARN, with the date caveat
+said +12.7%. A benchmark carries the last valid emitted valuation date as `asOf`, and Data
+Health scores every configured benchmark in NYSE sessions behind the NAV (one behind = WARN, with the date caveat
 beside every S&P-relative figure). Ending the curve honestly removed the wrong number but
 not the mixed comparison, so since 2026-09-09 the build also WAITS for the vendor tail: the
 cron clears the engine's publish tail but lands inside the market-data vendor's, and on

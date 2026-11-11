@@ -61,7 +61,8 @@ def test_green_daily_prices_do_not_mask_missing_weekly_fill():
         "risk_overlay.json": {"panel_end_date": "2026-10-30"},
     }
     now = instant("2026-11-03T04:00:00Z")
-    health = validate.run(bundle, REG, now.date(), {}, True, "ok", now_utc=now)
+    health = validate.run(bundle, REG, now.date(), {}, True, "ok", now_utc=now,
+                          benchmarks={key: {"asOf": "2026-11-02"} for key in REG["benchmarks"]})
     assert health["level"] == "stale"
     book = next(f for f in health["feeds"] if f["feed"].startswith("Executed portfolio"))
     assert book["expected"] == "2026-11-02"

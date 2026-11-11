@@ -104,13 +104,14 @@ def test_export_alone_when_yfinance_cannot_chain(monkeypatch):
     assert out["SPY"]["equity"][-2:] == [None, None]
 
 
-def test_interior_gap_is_forward_filled_and_counted(yf_frame):
+def test_interior_trading_gap_remains_missing_and_is_recorded(yf_frame):
     export = _export(["2026-08-31", "2026-09-01", "2026-09-03"], [100.0, 101.0, 103.0])  # no 2 Sep
     out, _, _ = bmk.build_benchmarks(MODEL_DATES, _reg(blend=False), LIVE_DATES,
                                      engine_files={"benchmark_spy.json": export})
     spy = out["SPY"]
-    assert spy["interior_filled"] == 1
-    assert spy["equity"][2] == pytest.approx(1.01), "2 Sep carries 1 Sep's close"
+    assert spy["interior_filled"] == 0
+    assert spy["valuation"]["missingNativeDates"] == ["2026-09-02"]
+    assert spy["equity"][2] is None, "A missing trading-day close must not be invented"
     assert spy["equity"][3] == pytest.approx(1.03)
 
 
@@ -278,3 +279,128 @@ def test_the_wait_ceiling_stays_below_the_workflow_timeout():
     ceiling = BENCH_TAIL_WAIT_ATTEMPTS * BENCH_TAIL_WAIT_SECONDS
     assert ceiling + 600 <= timeout_s, (
         f"wait ceiling {ceiling}s + 10m of build leaves no room in a {timeout_s}s timeout")
+
+
+# SGX holiday valuation must not depend on a subsequently withdrawn future bar.
+def _sti_registry():
+    return {"benchmarks": {"STI": {"label": "STI (USD)", "type": "yfinance",
+            "ticker": "ES3.SI", "calendar": "XSES", "fx": "SGDUSD=X"}}}
+
+
+def _sti_frame():
+    return pd.DataFrame({"ES3.SI": [4.0, 4.1, np.nan, 4.2],
+                         "SGDUSD=X": [.75, .76, .77, .78]},
+                        index=pd.to_datetime(["2026-11-05", "2026-11-06", "2026-11-09", "2026-11-10"]))
+
+
+@pytest.mark.parametrize("withdraw_future", [False, True])
+def test_sgx_holiday_has_current_usd_valuation_and_explicit_provenance(monkeypatch, withdraw_future):
+    frame = _sti_frame()
+    if withdraw_future:
+        frame.loc["2026-11-10", "ES3.SI"] = np.nan
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    out, ok, _ = bmk.build_benchmarks(["2026-11-06", "2026-11-09"], _sti_registry())
+    assert ok
+    sti = out["STI"]
+    assert sti["equity"] == pytest.approx([1.0, .77 / .76], abs=1e-6)
+    assert sti["asOf"] == "2026-11-09"
+    assert sti["nativePriceAsOf"] == "2026-11-06" and sti["fxAsOf"] == "2026-11-09"
+    assert sti["valuation"]["nativePriceDates"] == ["2026-11-06", "2026-11-06"]
+    assert sti["valuation"]["fxDates"] == ["2026-11-06", "2026-11-09"]
+    assert sti["valuation"]["holidayCarriedDates"] == ["2026-11-09"]
+
+
+def test_missing_open_sgx_session_is_not_forward_filled(monkeypatch):
+    frame = _sti_frame()
+    frame.loc["2026-11-10", "ES3.SI"] = np.nan
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    out, _, _ = bmk.build_benchmarks(["2026-11-06", "2026-11-09", "2026-11-10"], _sti_registry())
+    assert out["STI"]["equity"][-1] is None
+    assert out["STI"]["asOf"] == "2026-11-09"
+
+
+@pytest.mark.parametrize("missing", [("2026-11-06", "ES3.SI"), ("2026-11-09", "SGDUSD=X")])
+def test_holiday_requires_immediately_previous_native_session_and_exact_fx(monkeypatch, missing):
+    frame = _sti_frame()
+    frame.loc[missing] = np.nan
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    out, _, _ = bmk.build_benchmarks(["2026-11-05", "2026-11-09"], _sti_registry())
+    assert out["STI"]["equity"][-1] is None
+    assert out["STI"]["asOf"] == "2026-11-05"
+
+
+def test_all_missing_valuation_is_skipped_and_unhealthy(monkeypatch):
+    frame = _sti_frame()
+    frame["SGDUSD=X"] = np.nan
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    out, ok, note = bmk.build_benchmarks(["2026-11-09"], _sti_registry())
+    assert not ok and not out and "STI" in note
+
+
+def test_one_missing_benchmark_does_not_report_success(monkeypatch):
+    frame = _sti_frame()
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    reg = _sti_registry()
+    reg["benchmarks"]["QQQ"] = {"type": "yfinance", "ticker": "QQQ"}
+    out, ok, note = bmk.build_benchmarks(["2026-11-06", "2026-11-09"], reg)
+    assert "STI" in out and not ok and "QQQ" in note
+
+
+def test_bad_calendar_is_visible_and_fails_closed(monkeypatch):
+    monkeypatch.setattr(bmk, "_download", _fake_download(_sti_frame()))
+    reg = _sti_registry()
+    reg["benchmarks"]["STI"]["calendar"] = "NOT_A_CALENDAR"
+    out, ok, note = bmk.build_benchmarks(["2026-11-06", "2026-11-09"], reg)
+    assert not ok and not out
+
+
+def test_blend_does_not_restart_after_an_unobserved_trading_day(yf_frame, monkeypatch):
+    frame = yf_frame.copy()
+    frame.loc["2026-09-02", "IEF"] = np.nan
+    monkeypatch.setattr(bmk, "_download", _fake_download(frame))
+    out, _, _ = bmk.build_benchmarks(MODEL_DATES, _reg(spy_type="yfinance"), LIVE_DATES)
+    assert out["BAL6040"]["equity"][2:] == [None, None, None]
+    assert out["BAL6040"]["asOf"] == "2026-09-01"
+
+
+@pytest.mark.parametrize("dates", [["2026-04-30", "2026-05-01"], ["2025-12-31", "2026-01-01"]])
+def test_sgx_holiday_carry_across_month_and_year_boundaries(dates):
+    s = pd.Series([4.0], index=pd.to_datetime(dates[:1]))
+    aligned, prov = bmk.observed_on_axis(s, pd.to_datetime(dates), "XSES")
+    assert list(aligned) == [4.0, 4.0]
+    assert prov["source_dates"] == [dates[0], dates[0]]
+
+
+def test_calendar_carry_is_not_an_unbounded_stale_price_fill():
+    dates = pd.to_datetime(["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10"])
+    native = pd.Series([4.1], index=pd.to_datetime(["2026-11-06"]))
+    aligned, prov = bmk.observed_on_axis(native, dates, "XSES")
+    assert list(aligned.iloc[:4]) == [4.1] * 4
+    assert pd.isna(aligned.iloc[4])
+    assert prov["missing_dates"] == ["2026-11-10"]
+
+
+def test_native_dates_preserve_local_session_labels_and_deduplicate():
+    native = pd.Series([4.0, 4.1], index=pd.to_datetime(["2026-11-06", "2026-11-06"]).tz_localize("Asia/Singapore"))
+    aligned, prov = bmk.observed_on_axis(native, pd.to_datetime(["2026-11-09"]), "XSES")
+    assert aligned.iloc[0] == 4.1 and prov["source_dates"] == ["2026-11-06"]
+
+
+def test_leading_gap_does_not_borrow_a_future_native_close():
+    native = pd.Series([4.2], index=pd.to_datetime(["2026-11-10"]))
+    aligned, prov = bmk.observed_on_axis(native, pd.to_datetime(["2026-11-09", "2026-11-10"]), "XSES")
+    assert pd.isna(aligned.iloc[0]) and aligned.iloc[1] == 4.2
+    assert prov["source_dates"] == [None, "2026-11-10"]
+
+
+def test_partial_benchmark_failure_does_not_disable_existing_engine_tail_wait():
+    calls, slept = [], []
+    def partial(*_args):
+        calls.append(1)
+        date = "2026-09-04" if len(calls) == 1 else "2026-09-08"
+        return {"SPY": {"asOf": date}}, False, "incomplete; skipped STI"
+    out, ok, note = bmk.build_benchmarks_awaiting_tail(
+        MODEL_DATES, WAIT_REG, LIVE_DATES, {}, "2026-09-08", attempts=2,
+        sleep_s=60, builder=partial, sleep=slept.append, log=lambda *_: None)
+    assert not ok and out["SPY"]["asOf"] == "2026-09-08"
+    assert len(calls) == 2 and slept == [60] and "skipped STI" in note

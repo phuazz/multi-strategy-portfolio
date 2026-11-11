@@ -56,7 +56,7 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     already thrown that away. Defaults to the real clock; tests pass it.
 
     ``benchmarks`` is the built benchmark dict (each carrying ``asOf``); an
-    engine-type benchmark gets a feed row judged against the NAV's own as-of."""
+    configured benchmark gets a feed row judged against the NAV's own as-of."""
     fb = registry["freshness"]
     now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
     if now_utc.tzinfo is None or now_utc.utcoffset() is None:
@@ -118,15 +118,41 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     # Judged in NYSE sessions behind the NAV's OWN as-of, not the calendar: a
     # NAV that is itself late is the Price feed's finding, not this row's.
     bench_budget = fb.get("benchmark_sessions", 1)
+    benchmark_feeds = []
     for key, cfg in registry.get("benchmarks", {}).items():
-        bm = (benchmarks or {}).get(key)
-        if cfg.get("type") != "engine" or not bm or not bm.get("asOf") or not price_asof:
-            continue
-        b_lag = sessions_behind(dt.date.fromisoformat(bm["asOf"][:10]),
-                                dt.date.fromisoformat(price_asof[:10]))
-        add(f"Benchmark {cfg.get('label', key)} (engine export)", bm["asOf"], b_lag,
+        bm = (benchmarks or {}).get(key) or {}
+        asof = bm.get("asOf")
+        b_lag = None
+        if asof and price_asof:
+            b_lag = sessions_behind(dt.date.fromisoformat(asof[:10]),
+                                    dt.date.fromisoformat(price_asof[:10]))
+        source = bm.get("source")
+        if bm.get("nativePriceAsOf"):
+            source = (f"{source or 'benchmark'}; native close {bm['nativePriceAsOf']}"
+                      + (f"; FX {bm['fxAsOf']}" if bm.get("fxAsOf") else "")
+                      + f"; valuation {asof}")
+        kind = "engine export" if cfg.get("type") == "engine" else "valuation"
+        add(f"Benchmark {cfg.get('label', key)} ({kind})", asof, b_lag,
             bench_budget, bm.get("export_written_at_utc"), basis="NYSE sessions",
-            warn_at=0, versus=price_asof, source=bm.get("source"))
+            warn_at=0, versus=price_asof, source=source,
+            nativePriceAsOf=bm.get("nativePriceAsOf"), fxAsOf=bm.get("fxAsOf"))
+        f = feeds[-1]
+        if bm.get("dates") and bm.get("equity"):
+            curve = dict(zip(bm["dates"], bm["equity"]))
+            value = curve.get(price_asof)
+            if value is None or not np.isfinite(value) or value <= 0:
+                f["missingNAVValuation"] = True
+                if f["level"] == "ok":
+                    f["level"] = "warn"
+        valuation = bm.get("valuation") or {}
+        gaps = sorted(set(valuation.get("missingNativeDates", [])
+                          + valuation.get("missingFxDates", [])))
+        if gaps:
+            f["missingValuationDates"] = gaps
+            if f["level"] == "ok":
+                f["level"] = "warn"
+        benchmark_feeds.append(f)
+    bench_ok = bool(bench_ok and all(f["level"] == "ok" for f in benchmark_feeds))
 
     messages = []
 
@@ -144,6 +170,11 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
                 "Current prices do not confirm that the portfolio has been refreshed.")
         elif lag is None:
             messages.append(f"{f['feed']}: as-of date missing.")
+        elif f.get("missingNAVValuation") and not lag:
+            messages.append(f"{f['feed']}: no observed valuation for live NAV date {f['versus']}.")
+        elif f.get("missingValuationDates") and not lag:
+            messages.append(f"{f['feed']}: missing observed native closes or FX on "
+                            f"{len(f['missingValuationDates'])} valuation date(s); gaps are not filled.")
         elif f.get("versus"):
             messages.append(
                 f"{f['feed']} is {lag} NYSE session{'' if lag == 1 else 's'} behind the live NAV "
@@ -179,9 +210,11 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
                         f"(diffs={reconcile.get('diffs')}).")
 
     if not bench_ok:
-        messages.append(f"Benchmark feed unavailable: {bench_note}.")
+        messages.append(f"Benchmark feed incomplete or stale: {bench_note}.")
 
     level = max((f["level"] for f in feeds), key=lambda lv: _RANK[lv])
+    if not bench_ok and _RANK[level] < _RANK["warn"]:
+        level = "warn"
     if not consistency_ok:
         level = "stale"
     elif not reconcile.get("ok", True) and _RANK[level] < _RANK["warn"]:

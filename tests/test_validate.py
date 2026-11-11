@@ -56,7 +56,7 @@ _OK_STATS = {"reconcile": {"ok": True, "diffs": {}}}
 
 def test_fresh_feeds_pass():
     h = validate.run(_bundle(), REG, RUN, _OK_STATS, bench_ok=True, bench_note="ok",
-                     now_utc=NOW)
+                     now_utc=NOW, benchmarks=_bench("2026-06-18"))
     assert h["level"] == "ok" and h["ok"] and h["consistency_ok"]
 
 
@@ -175,15 +175,17 @@ def test_fresh_feeds_produce_no_messages():
     # The banner only renders when there is something to say; a healthy build
     # must not accumulate noise.
     h = validate.run(_bundle(), REG, RUN, _OK_STATS, bench_ok=True, bench_note="ok",
-                     now_utc=NOW)
+                     now_utc=NOW, benchmarks=_bench("2026-06-18"))
     assert h["messages"] == []
 
 
 # --- benchmark vs the live NAV (2026-09-06) ---------------------------------
 
 def _bench(asof, source="engine export benchmark_spy.json to 2026-06-17 + yfinance returns for 1 session"):
-    return {"SPY": {"asOf": asof, "source": source, "dates": [], "equity": [],
-                    "export_written_at_utc": "2026-06-14T02:00:00+00:00"}}
+    return {key: {"asOf": asof, "source": source if key == "SPY" else "yfinance",
+                  "dates": [], "equity": [],
+                  "export_written_at_utc": "2026-06-14T02:00:00+00:00"}
+            for key in REG["benchmarks"]}
 
 
 def _bench_feed(h):
@@ -230,6 +232,65 @@ def test_benchmark_ahead_of_a_late_nav_is_the_price_feeds_finding():
     assert _price_feed(h)["level"] == "stale"
 
 
-def test_no_benchmark_row_without_an_engine_benchmark():
+def test_missing_benchmarks_have_individual_warning_rows():
     h = validate.run(_bundle(), REG, RUN, _OK_STATS, bench_ok=True, bench_note="ok", now_utc=NOW)
-    assert not any(f["feed"].startswith("Benchmark") for f in h["feeds"])
+    rows = [f for f in h["feeds"] if f["feed"].startswith("Benchmark")]
+    assert len(rows) == len(REG["benchmarks"])
+    assert all(f["level"] == "warn" for f in rows)
+    assert not h["benchmark_ok"] and not h["ok"]
+
+
+def test_non_engine_stale_benchmark_is_visible_even_when_spy_is_current():
+    benchmarks = _bench("2026-06-18")
+    benchmarks["STI"]["asOf"] = "2026-06-16"
+    h = validate.run(_bundle(), REG, RUN, _OK_STATS, True, "ok", now_utc=NOW,
+                     benchmarks=benchmarks)
+    sti = next(f for f in h["feeds"] if f["feed"].startswith("Benchmark STI"))
+    assert sti["level"] == "stale" and sti["bday_lag"] == 2
+    assert h["level"] == "stale" and not h["benchmark_ok"]
+
+
+def test_missing_one_benchmark_is_not_concealed_by_remaining_curves():
+    benchmarks = _bench("2026-06-18")
+    del benchmarks["STI"]
+    h = validate.run(_bundle(), REG, RUN, _OK_STATS, True, "ok", now_utc=NOW,
+                     benchmarks=benchmarks)
+    assert h["level"] == "warn" and not h["benchmark_ok"]
+    assert any("STI" in m and "missing" in m for m in h["messages"])
+
+
+def test_future_asof_cannot_hide_missing_valuation_on_nav_date():
+    benchmarks = _bench("2026-06-18")
+    benchmarks["STI"].update(asOf="2026-06-22", dates=["2026-06-18", "2026-06-22"],
+                              equity=[None, 1.0])
+    h = validate.run(_bundle(), REG, RUN, _OK_STATS, True, "ok", now_utc=NOW,
+                     benchmarks=benchmarks)
+    assert not h["benchmark_ok"] and h["level"] == "warn"
+    assert any("no observed valuation" in m for m in h["messages"])
+
+
+def test_holiday_usd_valuation_is_current_and_exposes_native_and_fx_dates(monkeypatch):
+    import benchmarks as bmk
+    import pandas as pd
+    import numpy as np
+    frame = pd.DataFrame({"ES3.SI": [4.1, np.nan], "SGDUSD=X": [.76, .77]},
+                         index=pd.to_datetime(["2026-11-06", "2026-11-09"]))
+    monkeypatch.setattr(bmk, "_download", lambda *_: frame)
+    reg = {**REG, "benchmarks": {"STI": REG["benchmarks"]["STI"]}}
+    built, ok, note = bmk.build_benchmarks(["2026-11-06", "2026-11-09"], reg)
+    bundle = _bundle(panel_end="2026-11-06", price_asof="2026-11-09")
+    bundle["live_track.json"]["anchor_date"] = "2026-11-09"
+    bundle["multi_strategy.json"]["common_end"] = "2026-11-09"
+    now = dt.datetime(2026, 11, 10, 2, tzinfo=dt.timezone.utc)
+    h = validate.run(bundle, reg, now.date(), _OK_STATS, ok, note, now_utc=now,
+                     benchmarks=built)
+    sti = _bench_feed(h)
+    assert sti["level"] == "ok" and sti["asOf"] == "2026-11-09"
+    assert sti["nativePriceAsOf"] == "2026-11-06" and sti["fxAsOf"] == "2026-11-09"
+    assert "native close 2026-11-06" in sti["source"] and "FX 2026-11-09" in sti["source"]
+    assert h["benchmark_ok"] and h["level"] == "ok"
+    frame.loc["2026-11-09", "SGDUSD=X"] = np.nan
+    built, ok, note = bmk.build_benchmarks(["2026-11-06", "2026-11-09"], reg)
+    h = validate.run(bundle, reg, now.date(), _OK_STATS, ok, note, now_utc=now,
+                     benchmarks=built)
+    assert not h["benchmark_ok"] and h["level"] != "ok"

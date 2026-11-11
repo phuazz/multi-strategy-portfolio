@@ -22,10 +22,10 @@ build fetched at 01:22 UTC on the Saturday, received no 4 Sep SPY bar,
 forward-filled Thursday's close onto Friday's date and printed S&P YTD +13.1%
 against the model's Friday mark; the engine's email, on the same series with
 Friday's bar, said +12.7%. A benchmark series therefore now ENDS at its own
-last served close — never forward-filled onto model dates it has no bar for —
-and carries ``asOf`` so the adapter and Data Health can say when it trails the
-NAV. Interior gaps (a model date with no benchmark bar) are still forward-
-filled and counted in ``interior_filled``.
+last valid valuation date and carries ``asOf``. Only a calendar-confirmed
+closed venue may use its preceding session close, with that native date recorded.
+Currency conversion requires an observed FX quote on the valuation date. Missing
+trading-day closes and FX quotes remain empty, including interior gaps.
 
 Robustness: a yfinance failure must NOT kill the build. We return ok=False and
 the dashboard renders model-only with a flagged, missing benchmark feed. An
@@ -47,9 +47,11 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
+import pandas_market_calendars as mcal
 
 from nyse_sessions import sessions_behind
 
@@ -115,15 +117,53 @@ def extend_with_returns(base: pd.Series, fresh: pd.Series | None) -> tuple[pd.Se
 
 
 # --- alignment -------------------------------------------------------------
-def align_to_axis(series: pd.Series, idx: pd.DatetimeIndex) -> tuple[pd.Series, pd.Timestamp, int]:
-    """Place ``series`` on the model axis: interior gaps forward-filled and
-    counted, the tail beyond the series' own last bar left empty."""
-    s = series.dropna().sort_index()
-    last = s.index[-1]
-    al = s.reindex(s.index.union(idx)).ffill().reindex(idx)
-    al[al.index > last] = np.nan
-    interior = int(((~idx.isin(s.index)) & (idx <= last) & (idx >= s.index[0])).sum())
-    return al, last, interior
+@lru_cache(maxsize=None)
+def _calendar(name: str):
+    return mcal.get_calendar(name)
+
+
+def observed_on_axis(series: pd.Series, idx: pd.DatetimeIndex,
+                     calendar: str | None = "NYSE") -> tuple[pd.Series, dict]:
+    """Value each date using its required observed close, never a missing bar.
+
+    A closed native venue permits its immediately preceding session close.
+    An open venue requires that date's bar, even if a later bar exists. FX
+    uses calendar=None: an observed quote on the valuation date is required.
+    Python datetime months are 1-indexed; date arithmetic uses pandas.
+    """
+    s = series.copy()
+    s.index = pd.to_datetime(s.index).tz_localize(None).normalize()
+    s = s[~s.index.duplicated(keep="last")].sort_index()
+    s = s.where(np.isfinite(s) & (s > 0)).dropna()
+    if not len(s):
+        raise ValueError("no positive finite observations")
+    if calendar is None:
+        required = idx
+        closed = np.zeros(len(idx), dtype=bool)
+    else:
+        begin = min(idx[0], s.index[0]) - pd.Timedelta(days=14)
+        sessions = _calendar(calendar).schedule(start_date=begin, end_date=idx[-1]).index
+        positions = sessions.get_indexer(idx, method="pad")
+        required = pd.DatetimeIndex([sessions[i] if i >= 0 else pd.NaT for i in positions])
+        closed = ~idx.isin(sessions)
+    aligned = pd.Series(s.reindex(required).to_numpy(), index=idx, dtype=float)
+    actual = [d.strftime("%Y-%m-%d") if pd.notna(v) else None
+              for d, v in zip(required, aligned)]
+    # Pre-inception gaps are not withdrawals. Gaps from the first observation
+    # onward remain explicit and can downgrade benchmark health.
+    missing = [d.strftime("%Y-%m-%d") for d, v in aligned.items()
+               if d >= s.index[0] and pd.isna(v)]
+    return aligned, {"source_dates": actual,
+                     "holiday_dates": [d.strftime("%Y-%m-%d") for d, ok, v
+                                       in zip(idx, closed, aligned) if ok and pd.notna(v)],
+                     "missing_dates": missing}
+
+
+def align_to_axis(series: pd.Series, idx: pd.DatetimeIndex,
+                  calendar: str | None = "NYSE") -> tuple[pd.Series, pd.Timestamp, int]:
+    """Compatibility wrapper; only calendar-confirmed closures may carry."""
+    aligned, _ = observed_on_axis(series, idx, calendar)
+    return aligned, aligned.last_valid_index(), 0
 
 
 def _rebase(series: pd.Series) -> pd.Series:
@@ -216,44 +256,68 @@ def build_benchmarks(model_dates: list[str], registry: dict,
                 if t not in raw or (cfg.get("fx") and cfg["fx"] not in raw):
                     skipped.append(key)
                     continue
-                al, last, interior = align_to_axis(raw[t], idx)
+                calendar = cfg.get("calendar", "NYSE")
+                al, native = observed_on_axis(raw[t], idx, calendar)
                 p = _prov(t)
-                if cfg.get("fx"):                     # convert a local-currency index to USD
-                    fx, fx_last, _ = align_to_axis(raw[cfg["fx"]], idx)
+                fx_info = None
+                if cfg.get("fx"):
+                    fx, fx_info = observed_on_axis(raw[cfg["fx"]], idx, None)
                     al = al * fx
-                    last = min(last, fx_last)
-                    al[al.index > last] = np.nan
-                    p["source"] += f" × {cfg['fx']} (yfinance)"
-                out[key] = _emit(idx, _rebase(al), last, interior_filled=interior, **p)
+                    p["source"] += f" × {cfg['fx']} (yfinance; observed same-date FX)"
+                last = al.last_valid_index()
+                if last is None:
+                    skipped.append(key)
+                    continue
+                last_pos = idx.get_loc(last)
+                valuation = {"calendar": calendar, "nativeTicker": t,
+                             "nativePriceDates": native["source_dates"],
+                             "holidayCarriedDates": native["holiday_dates"],
+                             "missingNativeDates": native["missing_dates"]}
+                if fx_info is not None:
+                    valuation.update(fxTicker=cfg["fx"], fxDates=fx_info["source_dates"],
+                                     missingFxDates=fx_info["missing_dates"])
+                out[key] = _emit(idx, _rebase(al), last, interior_filled=0,
+                                 nativePriceAsOf=native["source_dates"][last_pos],
+                                 fxAsOf=fx_info["source_dates"][last_pos] if fx_info else None,
+                                 valuation=valuation, **p)
             else:  # daily constant-mix blend
                 comps = list(cfg["components"])
                 if any(c not in raw for c in comps):
                     skipped.append(key)
                     continue
-                cols, lasts = {}, []
+                cols = {}
                 for c in comps:
-                    al, last, _ = align_to_axis(raw[c], idx)
-                    cols[c] = al
-                    lasts.append(last)
+                    cols[c], _ = observed_on_axis(raw[c], idx,
+                        cfg.get("component_calendars", {}).get(c, "NYSE"))
                 frame = pd.DataFrame(cols)
-                as_of = min(lasts)
-                rets = frame.pct_change().fillna(0.0)
+                first = frame.dropna().index.min()
+                if pd.isna(first):
+                    skipped.append(key)
+                    continue
+                frame = frame.loc[first:]
+                rets = frame.pct_change(fill_method=None)
+                rets.iloc[0] = 0.0
                 weights = pd.Series(cfg["components"])
-                eq = (1.0 + (rets[weights.index] * weights).sum(axis=1)).cumprod()
-                eq[eq.index > as_of] = np.nan
+                # A missing daily leg makes the rebalanced path unknowable.
+                # Do not restart it or turn its return into zero after the gap.
+                daily = (rets[weights.index] * weights).sum(axis=1, min_count=len(comps))
+                eq = (1.0 + daily).cumprod(skipna=False).reindex(idx)
+                as_of = eq.last_valid_index()
                 legs = ", ".join(f"{c}: {_prov(c)['source']}" for c in comps)
                 out[key] = _emit(idx, _rebase(eq), as_of, interior_filled=0,
                                  basis="daily constant-mix of adjusted closes",
                                  source=legs, extension=None)
-        except Exception:
+
+        except Exception as exc:
             skipped.append(key)
+            notes.append(f"{key}: {type(exc).__name__}: {exc}")
 
     if not out:
-        return {}, False, f"no benchmark had usable data (skipped {skipped})"
-    note = "ok" if not skipped else f"ok; skipped {skipped}"
+        return {}, False, f"no benchmark had usable data (skipped {skipped})" + ("; " + "; ".join(notes) if notes else "")
+    note = "ok" if not skipped else f"incomplete; skipped {skipped}"
     if notes:
         note += "; " + "; ".join(notes)
-    return out, True, note
+    return out, not skipped, note
 
 
 # --- tail wait -------------------------------------------------------------
@@ -297,7 +361,9 @@ def build_benchmarks_awaiting_tail(model_dates: list[str], registry: dict,
     for remaining in range(max(int(attempts), 0), -1, -1):
         out, ok, note = builder(model_dates, registry, live_dates, engine_files)
         lag = engine_bench_lag(out, registry, price_asof)
-        if not ok or lag <= 0 or remaining == 0:
+        # An absent unrelated benchmark must not disable the existing wait
+        # for a usable but lagging engine curve. A total fetch failure stops.
+        if not out or lag <= 0 or remaining == 0:
             break
         log(f"  benchmark trails the NAV by {lag} NYSE session"
             f"{'' if lag == 1 else 's'} (NAV {price_asof}); the vendor bar is not "
