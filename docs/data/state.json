@@ -1,7 +1,7 @@
 {
   "contract_version": "1",
   "emitted_by": "multi-strategy-portfolio",
-  "emitted_at": "2026-11-19T03:35:39+00:00",
+  "emitted_at": "2026-11-19T04:30:04+00:00",
   "signals": {
     "monitor_health": {
       "as_of": "2026-11-17",
@@ -14,7 +14,7 @@
       "licence": "public",
       "action_hint": "watch",
       "source_file": "docs/data/portfolio-multi-strategy-portfolio.json",
-      "computed_at": "2026-11-19T03:34:56Z",
+      "computed_at": "2026-11-19T04:29:16Z",
       "cadence": "daily"
     }
   }
