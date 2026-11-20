@@ -1,6 +1,7 @@
 {
-  "status": "sending",
+  "status": "sent",
   "attempted_at_utc": "2026-11-20T03:26:44.183604+00:00",
   "content_sha256": "535c4882e6182f0955524c50d58c03ddb38c26955e96dd15f2bb4516c7685f68",
-  "run_id": "44667579725"
+  "run_id": "44667579725",
+  "accepted_at_utc": "2026-11-20T03:26:51.737950+00:00"
 }
