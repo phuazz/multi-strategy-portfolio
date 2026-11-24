@@ -1,0 +1,524 @@
+{
+  "version": 1,
+  "mode": "shadow",
+  "governance": {
+    "stress": "informational",
+    "gapBreach": "soft review",
+    "hardLimits": [],
+    "exceptions": []
+  },
+  "owner": "Portfolio research",
+  "approval": "Illustrative research assumptions. Review and record rationale before any policy adoption.",
+  "groups": {
+    "us_equity": [
+      "IUES",
+      "IUSP",
+      "IUUS",
+      "IJR",
+      "SPY",
+      "CSP1",
+      "IUFS",
+      "IUHC",
+      "IUIS",
+      "IUCS",
+      "IUCD",
+      "IUMS",
+      "IUCM",
+      "IDP6",
+      "VNQ",
+      "XBI",
+      "ARKG",
+      "XME",
+      "PAVE",
+      "ITA",
+      "PHO",
+      "IHI"
+    ],
+    "us_technology": [
+      "SOXX",
+      "QQQ",
+      "CNDX"
+    ],
+    "china_equity": [
+      "159801.SZ",
+      "CQQQ"
+    ],
+    "other_equity": [
+      "EEM",
+      "EXH1",
+      "EXH9",
+      "EXV1",
+      "EWJ",
+      "EFA",
+      "CIBR",
+      "ICLN",
+      "TAN",
+      "LIT",
+      "VGK",
+      "ARKK",
+      "SKYY",
+      "BOTZ",
+      "BLOK",
+      "URA",
+      "JETS",
+      "GDX",
+      "COPX",
+      "MOO",
+      "WOOD",
+      "REMX",
+      "EXV3",
+      "EXH3"
+    ],
+    "commodity": [
+      "DBC"
+    ],
+    "gold": [
+      "GLD"
+    ],
+    "short_treasury": [
+      "SHY"
+    ],
+    "bonds": [
+      "TLT",
+      "IEF",
+      "TIP"
+    ],
+    "crypto": [
+      "BTC-USD"
+    ]
+  },
+  "gap": {
+    "lossBudgets": {
+      "portfolio": 0.005,
+      "assetClass": {},
+      "instrumentType": {},
+      "sleeve": {}
+    },
+    "adverseMoves": {
+      "us_equity": 0.1,
+      "us_technology": 0.15,
+      "china_equity": 0.15,
+      "other_equity": 0.1,
+      "commodity": 0.1,
+      "gold": 0.08,
+      "short_treasury": 0.02,
+      "bonds": 0.06,
+      "crypto": 0.3
+    },
+    "positionCaps": {},
+    "groupCaps": {}
+  },
+  "scenarios": [
+    {
+      "name": "Mega-cap single stock down",
+      "driver": "single-stock price",
+      "move": -0.3,
+      "prices": {},
+      "unpriced": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity"
+      ],
+      "basis": "Indirect issuer holdings require dated constituent weights. The public book holds pooled equities.",
+      "flat": [
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Mega-cap single stock up",
+      "driver": "single-stock price",
+      "move": 0.3,
+      "prices": {},
+      "unpriced": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity"
+      ],
+      "basis": "Indirect issuer holdings require dated constituent weights. The public book holds pooled equities.",
+      "flat": [
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Nasdaq reversal down (dedicated technology funds)",
+      "driver": "Nasdaq price",
+      "move": -0.07,
+      "prices": {
+        "us_technology": -0.07
+      },
+      "unpriced": [],
+      "basis": "Parallel price proxy for the US technology bucket. Other buckets held flat; overlap through broad indices excluded.",
+      "flat": [
+        "us_equity",
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Nasdaq reversal up (dedicated technology funds)",
+      "driver": "Nasdaq price",
+      "move": 0.07,
+      "prices": {
+        "us_technology": 0.07
+      },
+      "unpriced": [],
+      "basis": "Parallel price proxy for the US technology bucket. Other buckets held flat; overlap through broad indices excluded.",
+      "flat": [
+        "us_equity",
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "S&P 500 reversal down",
+      "driver": "S&P 500 price",
+      "move": -0.05,
+      "prices": {
+        "us_equity": -0.05,
+        "us_technology": -0.05
+      },
+      "unpriced": [],
+      "basis": "Parallel US equity price proxy, including US technology. Other buckets held flat.",
+      "flat": [
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "S&P 500 reversal up",
+      "driver": "S&P 500 price",
+      "move": 0.05,
+      "prices": {
+        "us_equity": 0.05,
+        "us_technology": 0.05
+      },
+      "unpriced": [],
+      "basis": "Parallel US equity price proxy, including US technology. Other buckets held flat.",
+      "flat": [
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "China / Hong Kong surprise down",
+      "driver": "China equity price",
+      "move": -0.1,
+      "prices": {
+        "china_equity": -0.1
+      },
+      "unpriced": [
+        "other_equity"
+      ],
+      "basis": "Dedicated China equity receives the shock. Other international equities lack verified China look-through.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "China / Hong Kong surprise up",
+      "driver": "China equity price",
+      "move": 0.1,
+      "prices": {
+        "china_equity": 0.1
+      },
+      "unpriced": [
+        "other_equity"
+      ],
+      "basis": "Dedicated China equity receives the shock. Other international equities lack verified China look-through.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "US Treasury yields down",
+      "driver": "yield (bp)",
+      "move": -50,
+      "prices": {},
+      "unpriced": [
+        "bonds",
+        "short_treasury"
+      ],
+      "basis": "Yield change in basis points. Verified duration is unavailable; Treasury and bond price effects are unpriced.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "crypto"
+      ]
+    },
+    {
+      "name": "US Treasury yields up",
+      "driver": "yield (bp)",
+      "move": 50,
+      "prices": {},
+      "unpriced": [
+        "bonds",
+        "short_treasury"
+      ],
+      "basis": "Yield change in basis points. Verified duration is unavailable; Treasury and bond price effects are unpriced.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity",
+        "commodity",
+        "gold",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Broad USD down",
+      "driver": "USD index",
+      "move": -0.05,
+      "prices": {},
+      "unpriced": [
+        "other_equity",
+        "china_equity",
+        "gold",
+        "commodity",
+        "crypto"
+      ],
+      "basis": "US domestic asset prices held flat. Foreign currency baskets and indirect USD sensitivities are unverified.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "short_treasury",
+        "bonds"
+      ]
+    },
+    {
+      "name": "Broad USD up",
+      "driver": "USD index",
+      "move": 0.05,
+      "prices": {},
+      "unpriced": [
+        "other_equity",
+        "china_equity",
+        "gold",
+        "commodity",
+        "crypto"
+      ],
+      "basis": "US domestic asset prices held flat. Foreign currency baskets and indirect USD sensitivities are unverified.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "short_treasury",
+        "bonds"
+      ]
+    },
+    {
+      "name": "Broad commodities down",
+      "driver": "broad commodity basket price",
+      "move": -0.1,
+      "prices": {
+        "commodity": -0.1
+      },
+      "unpriced": [],
+      "basis": "Direct commodity fund price shock. Copper-only spot exposure requires separate sensitivity.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Broad commodities up",
+      "driver": "broad commodity basket price",
+      "move": 0.1,
+      "prices": {
+        "commodity": 0.1
+      },
+      "unpriced": [],
+      "basis": "Direct commodity fund price shock. Copper-only spot exposure requires separate sensitivity.",
+      "flat": [
+        "us_equity",
+        "us_technology",
+        "china_equity",
+        "other_equity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Global equity sell-off",
+      "prices": {
+        "us_equity": -0.1,
+        "us_technology": -0.1,
+        "china_equity": -0.1,
+        "other_equity": -0.1
+      },
+      "basis": "All equity buckets fall 10% in USD. Other asset prices held flat.",
+      "flat": [
+        "commodity",
+        "gold",
+        "short_treasury",
+        "bonds",
+        "crypto"
+      ]
+    },
+    {
+      "name": "Global risk-off / flight to quality",
+      "prices": {
+        "us_equity": -0.09,
+        "us_technology": -0.12,
+        "china_equity": -0.1,
+        "other_equity": -0.1,
+        "commodity": -0.08,
+        "gold": 0.04,
+        "short_treasury": 0.006,
+        "bonds": 0.035,
+        "crypto": -0.18
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "Inflationary equity and bond sell-off",
+      "prices": {
+        "us_equity": -0.07,
+        "us_technology": -0.1,
+        "china_equity": -0.07,
+        "other_equity": -0.08,
+        "commodity": 0.1,
+        "gold": 0.01,
+        "short_treasury": -0.008,
+        "bonds": -0.045,
+        "crypto": -0.1
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "Technology-led upside squeeze",
+      "prices": {
+        "us_equity": 0.035,
+        "us_technology": 0.12,
+        "china_equity": 0.01,
+        "other_equity": 0.02,
+        "commodity": 0.01,
+        "gold": -0.01,
+        "short_treasury": -0.002,
+        "bonds": -0.012,
+        "crypto": 0.1
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "Recovery from defensive positioning",
+      "prices": {
+        "us_equity": 0.08,
+        "us_technology": 0.1,
+        "china_equity": 0.07,
+        "other_equity": 0.08,
+        "commodity": 0.06,
+        "gold": -0.03,
+        "short_treasury": -0.005,
+        "bonds": -0.025,
+        "crypto": 0.13
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "China stimulus / Asian recovery",
+      "prices": {
+        "us_equity": 0.01,
+        "us_technology": 0.02,
+        "china_equity": 0.12,
+        "other_equity": 0.04,
+        "commodity": 0.065,
+        "gold": 0.01,
+        "short_treasury": -0.001,
+        "bonds": -0.012,
+        "crypto": 0.04
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "USD funding squeeze",
+      "prices": {
+        "us_equity": -0.06,
+        "us_technology": -0.08,
+        "china_equity": -0.12,
+        "other_equity": -0.1,
+        "commodity": -0.09,
+        "gold": -0.04,
+        "short_treasury": 0.002,
+        "bonds": 0.01,
+        "crypto": -0.15
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    },
+    {
+      "name": "Diversifier correlation breakdown",
+      "prices": {
+        "us_equity": -0.08,
+        "us_technology": -0.11,
+        "china_equity": -0.085,
+        "other_equity": -0.08,
+        "commodity": -0.06,
+        "gold": -0.05,
+        "short_treasury": -0.01,
+        "bonds": -0.06,
+        "crypto": -0.12
+      },
+      "basis": "Joint one-step USD instrument-price assumptions by bucket, inclusive of currency effects.",
+      "flat": []
+    }
+  ]
+}

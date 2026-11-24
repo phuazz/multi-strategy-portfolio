@@ -19,6 +19,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import adapter  # noqa: E402
+import shadow_risk  # noqa: E402
 import metrics  # noqa: E402
 import prices as prices_mod  # noqa: E402
 import validate  # noqa: E402
@@ -126,6 +127,11 @@ def build_dataset(portfolio_id: str, *, local: str | None = None,
         "holdings_prices": holdings_prices, "signals": signals, "trades": trades,
         "monthly": monthly, "changes": changes, "health": health,
     }
+
+    policy = shadow_risk.load_policy(portfolio_id)
+    if policy is not None:
+        legs, allocations = shadow_risk.anchored_legs(live, reg, overlay)
+        dataset["construction_risk"] = shadow_risk.build(dataset, policy, legs=legs, allocations=allocations)
 
     # Valuation layer (DESIGN.md Phase 1), default OFF. When enabled, compute
     # the monitor's own daily mark and reconcile it against the engine's live_equity,
