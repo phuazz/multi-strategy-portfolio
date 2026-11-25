@@ -20,6 +20,17 @@ deployed engine blob manifest must match the current engine publication. A succe
 refresh job or a green badge alone does not satisfy the gate. The NYSE calendar
 handles holidays and daylight saving; there is no invented return on a closed day.
 
+If a scheduled email check finds that the engine has published new inputs, it
+requests one source-change probe when the monitor is idle. The monitor verifies
+the inputs again before rebuilding. Completion triggers a new delivery check.
+Completion-triggered checks cannot start further probes.
+
+An isolated historical valuation gap in a dashboard-only comparator appears as a
+footnote in the email and PDF. This exception requires a successful benchmark
+fetch, current comparator marks and confirmation from the monitor that every
+warning has that cause. Required benchmark gaps, stale model inputs, inconsistent
+state, reconciliation failures and unclassified warnings still hold delivery.
+
 ## Delivery and duplicate protection
 
 Required repository secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `MORNING_REPORT_TO`.

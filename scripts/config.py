@@ -24,6 +24,7 @@ DOCS_INDEX = DOCS_DIR / "index.html"
 # The single portfolio shipped in v1. The pipeline is written to loop over a
 # list, so adding ids here (each with a portfolios/<id>.json) extends coverage.
 ACTIVE_PORTFOLIO_IDS = ["multi-strategy-portfolio"]
+MORNING_BENCHMARKS = {"SPY": "S&P 500", "AOR": "global 60/40", "BIL": "Treasury-bill proxy"}
 
 # Trading-day convention: ~252 sessions a year. Stated once, reused everywhere.
 TRADING_DAYS_PER_YEAR = 252

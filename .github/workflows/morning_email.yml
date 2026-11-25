@@ -24,6 +24,8 @@ concurrency:
 
 jobs:
   deliver:
+    outputs:
+      source_changed: ${{ steps.delivery.outputs.source_changed }}
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -45,6 +47,7 @@ jobs:
       - name: Verify the delivery guards
         run: python -m pytest tests/test_morning_report.py tests/test_morning_delivery.py tests/test_morning_visuals.py tests/test_historical_attribution.py tests/test_return_context.py tests/test_etf_return_context.py tests/test_portfolio_commentary.py tests/test_private_market_context.py -q
       - name: Check deployed data and deliver once
+        id: delivery
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
@@ -68,3 +71,22 @@ jobs:
           path: data/morning-email/check.json
           retention-days: 7
           if-no-files-found: ignore
+
+  recover:
+    needs: deliver
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      needs.deliver.outputs.source_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: write
+    steps:
+      - name: Request one guarded monitor probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          active=$(gh run list -R "$GITHUB_REPOSITORY" --workflow daily_monitor.yml --limit 30 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$active" -eq 0 ]; then
+            gh workflow run daily_monitor.yml -R "$GITHUB_REPOSITORY" --ref main -f catchup_attempt=1
+          fi

@@ -184,6 +184,8 @@ def report_html(r, preview=False):
     body += table(['Holding','NAV weight','Risk share*'],[[x['name'],BarValue(x['weight'],1,'weight',f'{x["weight"]:.1%}'),BarValue(risks.get(x['name']),1,'risk',f'{risks[x["name"]]:.1%}' if x['name'] in risks else '-')] for x in allocations])
     body += '<p class="small">Blue = share of NAV; teal = estimated share of portfolio risk. Both tracks run from 0 to 100%, with different denominators. *Only the three largest portfolio risk contributors are available here; a dash is not zero.</p>'
     body += '<div class="card" style="background:#ffffff;border:1px solid #e2e0d8;padding:18px;margin-top:24px"><strong>Attached: the portfolio review PDF</strong><p style="margin-bottom:0">Includes the full risk scorecard, attribution, valuation dates and calculation conventions. No portfolio action is implied by this report.</p></div>'
+    if r.get('dashboard_note'):
+        body += '<p class="small">' + escape(r['dashboard_note']) + '</p>'
     return shell(title,body)
 
 
@@ -283,6 +285,8 @@ def report_pdf(r, path, preview=False):
     box.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#f0f5fa')),('BOX',(0,0),(-1,-1),.5,colors.HexColor('#d6e2ed')),('LINEBEFORE',(0,0),(0,-1),3,colors.HexColor(BLUE)),('LEFTPADDING',(0,0),(-1,-1),10),('RIGHTPADDING',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]))
     flow.append(box)
     p(f'<link href="{PAGE}" color="#1d4ed8">Open dashboard</link> | <link href="{URL}" color="#1d4ed8">Open source dataset</link>','p')
+    if r.get('dashboard_note'):
+        p(escape(r['dashboard_note']), 'small')
     flow.append(PageBreak())
     p('What drove the return?','title')
     w,g=r['weights'],r['regime']

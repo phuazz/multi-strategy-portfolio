@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+from config import MORNING_BENCHMARKS
 from nyse_sessions import last_completed_session
 
 URL = 'https://phuazz.github.io/multi-strategy-portfolio/data/portfolio-multi-strategy-portfolio.json'
@@ -112,7 +113,7 @@ def build(d, now, market_context=None):
     if live and live.get('dates'):
         lines += [f'Live mark-to-market extension after {live["anchor_date"]}; kept distinct from backtested history.', '']
     benchmarks = {}
-    for key in ('SPY', 'AOR', 'BIL'):
+    for key in MORNING_BENCHMARKS:
         b = eq['benchmarks'].get(key)
         if b:
             benchmarks[key] = series(b['dates'], b['equity'])
@@ -227,7 +228,12 @@ def build(d, now, market_context=None):
               f'Cost assumption in source: {meta.get("cost_assumption_bps","unavailable")}bp; hypothetical performance, with no verification of actual fills, account costs or capacity.',
               'Historical statistics are descriptive, not evidence of future returns. Dates are source-derived and library-checked; flag any disputed valuation date for confirmation.',
               f'Dashboard: {PAGE}', f'Data: {URL}']
+    warnings = d['health'].get('dashboard_only_history_warnings', [])
+    dashboard_note = 'Historical gaps in dashboard comparators: ' + ', '.join(warnings) + '.' if warnings else ''
+    if dashboard_note:
+        lines.append(dashboard_note)
     report={'subject':f'Multi-Strategy morning | {state} | NAV {end:%Y-%m-%d}',
+            'dashboard_note':dashboard_note,
             'body':'\n'.join(lines), 'expected_session':str(expected), 'nav_date':str(end.date()),
             'status':state, 'generated_at_utc':now.astimezone(timezone.utc).isoformat(),
             'performance':performance,'risk_rows':risk_rows,'relative_rows':relative_rows,'return_context':context,

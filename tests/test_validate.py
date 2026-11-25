@@ -192,6 +192,26 @@ def _bench_feed(h):
     return next(f for f in h["feeds"] if f["feed"].startswith("Benchmark"))
 
 
+def test_only_historical_dashboard_gaps_can_clear_mail():
+    end = "2026-06-18"
+    benchmarks = _bench(end)
+    for curve in benchmarks.values():
+        curve.update(dates=[end], equity=[1.0])
+    def check(bundle=None, fetched=True):
+        return validate.run(bundle or _bundle(), REG, RUN, _OK_STATS, fetched, "fixture",
+                            now_utc=NOW, benchmarks=benchmarks).get("dashboard_only_history_warnings")
+    benchmarks["STI"]["valuation"] = {"missingFxDates": ["2019-05-22"]}
+    assert check() == ["Benchmark STI (USD) (valuation)"]
+    assert not check(fetched=False)
+    assert not check(_bundle(panel_end="2026-05-20"))
+    assert not check(_bundle(since="2026-05-02"))
+    benchmarks["SPY"]["valuation"] = {"missingNativeDates": ["2019-05-22"]}
+    assert not check()
+    del benchmarks["SPY"]["valuation"]
+    benchmarks["STI"]["equity"] = [None]
+    assert not check()
+
+
 def test_benchmark_current_with_the_nav_is_ok_and_silent():
     h = validate.run(_bundle(), REG, RUN, _OK_STATS, bench_ok=True, bench_note="ok",
                      now_utc=NOW, benchmarks=_bench("2026-06-18"))

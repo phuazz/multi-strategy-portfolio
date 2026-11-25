@@ -55,6 +55,24 @@ def test_freshness_checks_actual_tail_and_book_not_badge():
     assert any('global 60/40' in s for s in freshness(d,now))
 
 
+def test_dashboard_exception_preserves_other_delivery_guards():
+    d = sample()
+    now = clock('2026-11-04T01:00:00+00:00')
+    d['health'].update(level='warn', benchmark_ok=False)
+    assert freshness(d, now)  # Older or unclassified warning.
+    d['health']['dashboard_only_history_warnings'] = ['Benchmark STI (USD) (valuation)']
+    assert freshness(d, now) == []
+    for key in ('consistency_ok', 'reconcile_ok'):
+        d['health'][key] = False
+        assert freshness(d, now)
+        d['health'][key] = True
+    d['health']['level'] = 'stale'
+    assert freshness(d, now)
+    d['health']['level'] = 'warn'
+    d['equity']['benchmarks']['SPY']['asOf'] = '2026-11-02'
+    assert freshness(d, now)
+
+
 class Ledger:
     def __init__(self): self.values={}
     def read(self,key): return deepcopy(self.values.get(key)),None

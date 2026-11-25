@@ -33,6 +33,7 @@ import datetime as dt
 
 import numpy as np
 
+from config import MORNING_BENCHMARKS
 from nyse_sessions import last_completed_session, next_session_close, sessions_behind
 from portfolio_freshness import evaluate_book
 
@@ -119,6 +120,7 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     # NAV that is itself late is the Price feed's finding, not this row's.
     bench_budget = fb.get("benchmark_sessions", 1)
     benchmark_feeds = []
+    ancillary_gaps = []
     for key, cfg in registry.get("benchmarks", {}).items():
         bm = (benchmarks or {}).get(key) or {}
         asof = bm.get("asOf")
@@ -150,8 +152,16 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         if gaps:
             f["missingValuationDates"] = gaps
             if f["level"] == "ok":
+                if (key not in MORNING_BENCHMARKS and asof == price_asof
+                        and bm.get("equity") and gaps[-1] < price_asof):
+                    ancillary_gaps.append(f["feed"])
                 f["level"] = "warn"
         benchmark_feeds.append(f)
+    # Certify the exception only when the whole benchmark fetch succeeded and
+    # every feed warning is explained by an older gap in a dashboard comparator.
+    only_ancillary_gaps = (bench_ok and bool(ancillary_gaps)
+                           and MORNING_BENCHMARKS.keys() <= (benchmarks or {}).keys()
+                           and {f["feed"] for f in feeds if f["level"] != "ok"} == set(ancillary_gaps))
     bench_ok = bool(bench_ok and all(f["level"] == "ok" for f in benchmark_feeds))
 
     messages = []
@@ -248,6 +258,8 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         "consistency_ok": consistency_ok,
         "reconcile_ok": bool(reconcile.get("ok", True)),
         "benchmark_ok": bool(bench_ok),
+        **({"dashboard_only_history_warnings": ancillary_gaps}
+           if only_ancillary_gaps and consistency_ok and reconcile.get("ok") is True else {}),
         "messages": messages,
         "source_commit": bundle.get("source_commit"),
         "checked_at": run_date.isoformat(),

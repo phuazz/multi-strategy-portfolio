@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from config import load_registry
+from config import MORNING_BENCHMARKS, load_registry
 from morning_report import URL, PAGE, build, series
 from nyse_sessions import last_completed_session
 from portfolio_freshness import evaluate_book
@@ -45,15 +45,19 @@ def freshness(d, now):
     meta=d.get('meta',{})
     if meta.get('live_asOf') != expected:
         reasons.append(f'Official NAV ends {meta.get("live_asOf","unknown")}; expected {expected}')
-    if d.get('health',{}).get('level') != 'ok':
+    health = d.get('health', {})
+    ancillary_only = health.get('level') == 'warn' and bool(health.get('dashboard_only_history_warnings'))
+    if health.get('level') != 'ok' and not ancillary_only:
         reasons.append('Dataset health is not OK')
-    for field in ('consistency_ok','reconcile_ok','benchmark_ok'):
-        if d.get('health',{}).get(field) is not True:
+    if health.get('benchmark_ok') is not True and not ancillary_only:
+        reasons.append('Dataset check benchmark_ok is not confirmed')
+    for field in ('consistency_ok','reconcile_ok'):
+        if health.get(field) is not True:
             reasons.append(f'Dataset check {field} is not confirmed')
     book=evaluate_book(meta.get('portfolio_anchor'),meta.get('strategy_asOf'),now)
     if book['level'] != 'ok':
         reasons.append(f'Executed book covers {book["asOf"]}; required {book["expected"]}')
-    for key,label in [('SPY','S&P 500'),('AOR','global 60/40'),('BIL','Treasury-bill proxy')]:
+    for key,label in MORNING_BENCHMARKS.items():
         b=d.get('equity',{}).get('benchmarks',{}).get(key,{})
         if not b.get('dates') or b['dates'][-1] != expected or b.get('asOf') != expected:
             reasons.append(f'{label} does not end on the required valuation date')
@@ -206,6 +210,9 @@ def main():
         snapshot=resolve_snapshot(source)
         if changed_files(d['meta'],snapshot,source):
             reasons.append('The deployed page has not yet consumed the latest engine publication')
+            if args.send and os.environ.get('GITHUB_OUTPUT'):
+                with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+                    output.write('source_changed=true\n')
         # Normal report generation itself guards malformed levels and live anchors.
         if not reasons or args.preview:
             context,context_status=fetch_context(d['meta']['live_asOf'],now,local_path=args.market_context)
