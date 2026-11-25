@@ -17,18 +17,25 @@ def build(report):
             ('Market context unavailable','No usable date-matched X briefing is included. Portfolio figures and attribution are shown separately.')],
             'sources':[], 'provenance':'Portfolio close '+report['nav_date']+'. No earlier briefing has been reused.'}
     rows=report.get('etf_return_context',{}).get('periods',{}).get('1D',{}).get('rows',[])
-    held={r['ticker'] for r in rows if (r.get('current_weight') or 0)>0}
+    held={r['ticker']:r['current_weight'] for r in rows if (r.get('current_weight') or 0)>0}
     close=_NYSE.schedule(start_date=report['nav_date'],end_date=report['nav_date']).iloc[0]['market_close'].to_pydatetime()
     paragraphs=[];sources=[]
+    spotlight=None
+    largest_weight=0
     for i,item in enumerate(context['developments'],1):
         timing=' After US close.' if stamp(item['event_time_utc'])>close else ''
-        matched=sorted(held.intersection(item['affected_tickers']))
+        matched=sorted(held.keys() & set(item['affected_tickers']))
+        weight=sum(held[t] for t in matched)
+        if weight > largest_weight:
+            largest_weight=weight
+            spotlight=dict(title=item['title'], summary=item['summary'], view=item['portfolio_relevance'], held=matched,
+                           confidence=item['confidence'], after_close=bool(timing), sources=item['sources'])
         exposure=' Current holdings: '+', '.join(matched)+'.' if matched else ' No current holding matched.'
         text=(item['summary']+' Interpretation: '+item['interpretation']+
               ' Relevance: '+item['portfolio_relevance']+exposure+timing)
         paragraphs.append((item['title']+' ['+str(i)+'; '+item['confidence']+']',text))
         sources.extend(dict(s,number=i,citation=str(i)+chr(97+j)) for j,s in enumerate(item['sources']))
-    return {'asOf':report['nav_date'],'paragraphs':paragraphs,'sources':sources,
+    return {'asOf':report['nav_date'],'paragraphs':paragraphs,'sources':sources,'spotlight':spotlight,
             'provenance':'US session '+report['nav_date']+'; briefing cutoff '+context['cutoff_utc']+
             '. X briefing claims; interpretations are hypotheses, not causal attribution. Post-close developments cannot explain that close.'}
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from render_morning import BarValue, GREEN, RED, bar_html, return_scale, excess, contribution_html
+from render_morning import BarValue, GREEN, RED, bar_html, return_scale, excess, email_digest
 from attribution_presentation import leaders, comparison_rows
 
 
@@ -41,7 +41,8 @@ def sample(contributions):
        'etf':attrs,'strategy':[{'code':'A','name':'Strategy A','contrib':total,'residual':0,'coverage':1}],
        'model_return':total-.001,'etf_total':total,'strategy_total':total,
        'etf_residual':-.001,'strategy_residual':-.001,'coverage':1}
-    return {'attribution':{'version':2,'asOf':'2026-11-03','method':'Historical holdings',
+    return {'performance':[{'period':'1 session','model':p['model_return'],'SPY':0}],
+            'nav_date':p['end'],'attribution':{'version':2,'asOf':'2026-11-03','method':'Historical holdings',
                            'periods':{'1D':p,'1M':p}}}
 
 
@@ -51,26 +52,50 @@ def test_contributors_rank_signs_separately_and_exclude_missing_prices():
     assert [a['contrib'] for a in s['positive'][:3]]==[.004,.003,.002]
     assert [a['contrib'] for a in s['negative'][:3]]==[-.004,-.003,-.002]
     r['attribution']['periods']['1D']['etf'][0]['contrib']=None
-    html=contribution_html(r)
-    assert 'holding 0' not in html
-    assert '1D ETF contributors' in html and '1M ETF contributors' in html
-    assert 'not treated as zero' in html
+    html,plain=email_digest(r)
+    for body in (html,plain):
+        assert 'holding 0' not in body
+        assert 'holding 6 (T6)' in body and 'holding 3 (T3)' in body
+        assert 'holding 2' not in body and 'Market watch' not in body
 
 
 @pytest.mark.parametrize('values',[[.001,.002],[-.001,-.002],[0,0]])
 def test_one_sided_or_zero_contributions_never_invent_opposite_sign(values):
-    html=contribution_html(sample(values))
-    assert 'None with complete price coverage.' in html
+    html,plain=email_digest(sample(values))
+    for body in (html,plain):
+        for i,value in enumerate(values):
+            assert (f'holding {i} (T{i})' in body) == (value != 0)
+        assert ('No signed contribution' in body) == all(v == 0 for v in values)
+
+
+def test_daily_drivers_cap_and_performance_windows():
+    r=sample([-.004,.003,-.002,.001,-.0005,.0001])
+    r['etf_return_context']={'periods':{'1D':{'start':'2026-11-02','end':'2026-11-03',
+        'rows':[{'ticker':'T0','return':-.024,'current_weight':.05}]}}}
+    r['performance'].extend([{'period':'1 week','model':-.01,'SPY':-.02},
+                             {'period':'YTD','model':.12}])
+    html,plain=email_digest(r)
+    for body in (html,plain):
+        assert body.index('holding 0') < body.index('holding 1') < body.index('holding 2')
+        assert 'holding 4' in body and 'holding 5' not in body
+        assert 'Combined impact -25.0 bp' in body
+    assert 'holding 0 (T0) · -2.40% · 16.67% · -40.0 bp' in plain
+    assert 'holding 1 (T1) · – · 16.67% · +30.0 bp' in plain
+    assert '1W · -1.00% · -2.00% · +1.00pp' in plain
+    assert 'YTD · +12.00% · – · -' in plain
+    r['etf_return_context']['periods']['1D']['start']='2026-11-01'
+    with pytest.raises(ValueError,match='dates differ'):
+        email_digest(r)
 
 
 def test_bad_attribution_cannot_be_presented_as_reconciled():
     r=sample([.001,-.002])
     r['attribution']['periods']['1D']['etf_residual']=0
     with pytest.raises(ValueError,match='reconcile'):
-        contribution_html(r)
+        email_digest(r)
     r['attribution']['periods']['1D']['etf'][0]['known_contrib']=float('nan')
     with pytest.raises(ValueError,match='Non-finite'):
-        contribution_html(r)
+        email_digest(r)
 
 
 def test_absent_position_is_zero_but_incomplete_period_is_missing():

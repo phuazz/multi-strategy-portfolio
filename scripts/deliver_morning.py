@@ -243,7 +243,8 @@ def main():
         if not 3 <= len(reader.pages) <= 6 or not all(page.extract_text().strip() for page in reader.pages):
             raise ValueError('PDF must contain 3-6 nonempty A4 pages including full attribution')
         subject=f'Multi-Strategy | {report["performance"][0]["model"]:+.2%} | Close {expected}'
-        deliver_once(ledger,expected+'-report',subject,report['body'],html,pdf,send_smtp,now)
+        body=(out/'report.txt').read_text(encoding='utf-8')
+        deliver_once(ledger,expected+'-report',subject,body,html,pdf,send_smtp,now)
     else:
         subject=f'Multi-Strategy | data delayed | Expected close {expected}'
         body=f'The morning report is waiting for verified data for the US close {expected}.\n'+'\n'.join(reasons)+f'\nThe full report and PDF will follow when the checks pass.\n{PAGE}'

@@ -7,10 +7,10 @@ from dataclasses import dataclass
 import math
 
 from morning_report import PAGE, URL, fmt
-from attribution_presentation import bp, comparison_rows, leaders, bridge_text
+from attribution_presentation import bp, comparison_rows, leaders, bridge_text, daily_drivers
 from return_context import rows as context_rows
-from return_context_visuals import context_html, etf_context_html, RiskMove, ETFMove, LIMIT
-from portfolio_commentary import build as build_commentary, html as commentary_html
+from return_context_visuals import RiskMove, ETFMove, LIMIT
+from portfolio_commentary import build as build_commentary
 
 INK, MUTED, GREEN, RED, BORDER = '#1a1a18', '#5c5c56', '#146c43', '#a93226', '#e2e0d8'
 BLUE, CYAN, TRACK = '#1d4ed8', '#0e7490', '#eeeee8'
@@ -34,33 +34,6 @@ class ExcessValue:
 
 def excess(row):
     return ExcessValue(None if row.get('SPY') is None else row['model']-row['SPY'])
-
-
-def contribution_html(r):
-    a=r['attribution']
-    body='<h2>Strategy contribution: 1D and 1M</h2>'
-    body+='<p class="small">Historical model holdings; USD; contribution in basis points. 100 bp = 1 percentage point.</p>'
-    rows=comparison_rows(a,'strategy')
-    scale=max([abs(x[h]) for x in rows for h in ('1D','1M') if x[h] is not None]+[.000001])
-    body+=table(['Strategy','1D','1M'],[[x['name']]+[BarValue(x[h],scale,label=bp(x[h])+(' *' if x[h+'_coverage']<.999999 else '')) for h in ('1D','1M')] for x in rows])
-    body+=f'<p class="small">Strategy bars share a 0-{scale*10000:.1f} bp magnitude scale. *Published strategy return has incomplete underlying ETF price verification.</p>'
-    for h in ('1D','1M'):
-        p=a['periods'][h]
-        body+=f'<h2>{h} ETF contributors and detractors</h2><p class="small">{escape(str(p["start"]))} to {escape(p["end"])}. Source: published historical holdings and adjusted prices.</p>'
-        if p['status']=='unavailable':
-            body+='<p>'+escape(bridge_text(p))+'</p>';continue
-        selected=leaders(a,h)
-        for key,title,colour,bg in [('positive','Positive contributors',GREEN,'#edf7f0'),('negative','Negative contributors',RED,'#fdf0ee')]:
-            group=selected[key][:3]
-            body+=f'<div style="border-left:4px solid {colour};background:{bg};padding:12px;margin:12px 0"><strong style="color:{colour}">{title}</strong>'
-            body+=table(['ETF / model label','Contribution'],[[f'{x["name"]} ({x["ticker"]})',BarValue(x['contrib'],selected['scale'],label=bp(x['contrib']))] for x in group]) if group else '<p>None with complete price coverage.</p>'
-            body+='</div>'
-        body+=f'<p class="small">Top three per sign among fully priced holdings; both groups share a 0-{selected["scale"]*10000:.1f} bp scale for {h}. Exited holdings remain in the monthly calculation.</p>'
-        body+='<div style="background:#fff8eb;border-left:4px solid #b45309;padding:12px"><strong>Reconciliation'+(' / review required' if p['status']=='review' else '')+'</strong><p style="margin:6px 0">'+escape(bridge_text(p))+'</p>'
-        if p['issues']:body+='<p class="small" style="margin:0">'+escape('; '.join(p['issues']))+'</p>'
-        body+='</div>'
-    body+='<p class="small">'+escape(a['method'])+' Incomplete ETF rows are excluded from rankings, not treated as zero. Residuals of 5 bp or more are flagged in either direction. This explains absolute model return, not benchmark excess or actual-account P&amp;L. Full ETF and strategy details are in the PDF and dashboard.</p>'
-    return body
 
 
 @dataclass(frozen=True)
@@ -116,26 +89,16 @@ def number(x):
     return fmt(x)
 
 
-def cell(value, header=False):
-    tag = 'th' if header else 'td'
-    content=bar_html(value) if isinstance(value,BarValue) else (f'<strong style="color:{value.colour}">{value.text}</strong>' if isinstance(value,ExcessValue) else escape(str(value)))
-    bg='background:#f5f5f0;' if header else ''
-    return f'<{tag} style="{bg}padding:10px 6px;border-bottom:1px solid {BORDER};text-align:left;font-size:14px;line-height:1.45;vertical-align:top">{content}</{tag}>'
-
-
-def table(headers, rows):
-    return '<table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr>' + ''.join(cell(h,True) for h in headers) + '</tr></thead><tbody>' + ''.join('<tr>'+''.join(cell(x) for x in row)+'</tr>' for row in rows) + '</tbody></table>'
-
-
-def shell(title, content):
+def shell(title, content, wide=False):
     # Inline properties carry the layout in email clients; CSS adds phone refinements.
+    width = 800 if wide else 640
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light"><title>{escape(title)}</title>
-<style>html{{-webkit-text-size-adjust:100%}}body{{margin:0;background:#fafaf8;color:{INK};font:16px/1.6 Arial,sans-serif}}p{{max-width:70ch}}a{{color:#1d4ed8}}.wrap{{max-width:640px;margin:auto;padding:32px 24px}}.card{{border:1px solid {BORDER};border-radius:8px;padding:18px;background:#ffffff}}h1{{font:36px/1.15 Georgia,serif;margin:8px 0 16px}}h2{{font-size:18px;margin:26px 0 8px}}.small{{font-size:13px;color:{MUTED}}}@media(max-width:480px){{.wrap{{padding:22px 14px}}h1{{font-size:30px}}.card{{padding:12px}}th,td{{font-size:13px!important;padding:9px 4px!important}}}}</style></head>
-<body style="margin:0;background:#fafaf8;color:{INK};font-family:Arial,sans-serif;font-size:16px;line-height:1.6"><main class="wrap" style="max-width:640px;margin:0 auto;padding:24px 14px">
+<style>html{{-webkit-text-size-adjust:100%}}body{{margin:0;background:#fafaf8;color:{INK};font:16px/1.6 Arial,sans-serif}}p{{max-width:70ch}}a{{color:#1d4ed8}}.wrap{{max-width:{width}px;margin:auto;padding:32px 24px}}.card{{border:1px solid {BORDER};border-radius:8px;padding:18px;background:#ffffff}}h1{{font:36px/1.15 Georgia,serif;margin:8px 0 16px}}h2{{font-size:18px;margin:26px 0 8px}}.small{{font-size:13px;color:{MUTED}}}@media(max-width:480px){{td.wrap{{padding:18px 14px!important;font-size:16px!important}}h1{{font-size:30px}}.card{{padding:12px}}th,td{{font-size:14px!important;padding:8px 4px!important}}}}</style></head>
+<body style="margin:0;background:#fafaf8;color:{INK};font-family:Arial,sans-serif;font-size:16px;line-height:1.6"><table role="presentation" align="center" width="100%" style="width:100%;max-width:{width}px;margin:0 auto;border-collapse:collapse"><tr><td class="wrap" style="padding:20px 16px;background:#fff">
 <p style="font-size:12px;letter-spacing:1.2px;color:{MUTED};margin:0">MULTI-STRATEGY PORTFOLIO / PAPER MODEL</p>{content}
-<p class="small" style="font-size:13px;color:{MUTED};border-top:1px solid {BORDER};padding-top:18px"><a href="{PAGE}">Open dashboard</a> &nbsp;|&nbsp; <a href="{URL}">Source data</a><br>Personal model portfolio. USD. Hypothetical returns, not account performance.</p></main></body></html>'''
+<p class="small" style="font-size:13px;color:{MUTED};border-top:1px solid {BORDER};padding-top:18px"><a href="{PAGE}">Open dashboard</a> &nbsp;|&nbsp; <a href="{URL}">Source data</a><br>Personal model portfolio. USD. Hypothetical returns, not account performance.</p></td></tr></table></body></html>'''
 
 
 def delay_html(expected, reasons):
@@ -146,47 +109,111 @@ def delay_html(expected, reasons):
                  +'<p style="margin-bottom:0">The full report and PDF will follow once the checks pass. No stale performance figures are being presented as overnight returns.</p></div>')
 
 
-def report_html(r, preview=False):
-    perf = r['performance']
-    one = perf[0]
-    colour = GREEN if one['model'] >= 0 else RED
-    ytd = next((x['model'] for x in perf if x['period']=='YTD'),None)
-    warning = '<p style="padding:12px;background:#fff4df;color:#92400e;font-weight:bold">DESIGN PREVIEW - sample only; not a scheduled delivery.</p>' if preview else ''
+def email_digest(r, preview=False):
+    """Render the same morning readout for HTML and plain-text MIME parts."""
+    one = next(row for row in r['performance'] if row['period'] == '1 session')
     title = f'Model {pct(one["model"])} for the session'
-    body = warning+f'<h1 style="font-family:Georgia,serif;font-size:32px;line-height:1.2">{escape(title)}</h1>'
-    body += f'<p style="font-size:14px;color:{MUTED}">Close of <strong>{r["nav_date"]}</strong> &middot; USD &middot; source: published model NAV</p>'
-    body += '<table role="presentation" style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e2e0d8"><tr>'
-    for label,value,c in [('SESSION',pct(one['model']),colour),('YEAR TO DATE',pct(ytd),GREEN if ytd is not None and ytd>0 else RED if ytd is not None and ytd<0 else MUTED),('DRAWDOWN',pct(r['current_dd']),RED)]:
-        body += f'<td style="width:33%;padding:12px 8px;vertical-align:top;border-top:4px solid {c}"><span style="font-size:11px;color:{MUTED}">{label}</span><br><strong style="font-size:25px;color:{c}">{value}</strong></td>'
-    body += '</tr></table>'
-    if 'SPY' in one:
-        diff=(one['model']-one['SPY'])*100
-        body += f'<p>The model was <strong style="color:{excess(one).colour}">{abs(diff):.2f} percentage points {"ahead of" if diff >= 0 else "behind"}</strong> the S&amp;P 500 total-return proxy for the same session.</p>'
-    body += commentary_html(r)
-    body += '<h2>Performance</h2><p class="small">Returns through '+r['nav_date']+'. Matched endpoints; detailed windows in the PDF.</p>'
-    scale=return_scale(r)
-    body += table(['Period','Model',SPY_LABEL,'Excess (pp)'],[[x['period']]+[BarValue(x.get(k),scale) for k in ('model','SPY')]+[excess(x)] for x in perf])
-    body += f'<p class="small">{SPY_BASIS} Excess = model minus proxy on identical endpoints, in percentage points (pp). Green/red excess means outperformance/underperformance, even when both returns are negative.</p>'
-    body += f'<p class="small">Return bars share one 0-{scale:.1%} magnitude scale: green = gain; red = loss. The PDF also shows the global 60/40 fund comparator and exact start dates.</p>'
-    body += context_html(r.get('return_context'))
-    body += contribution_html(r)
-    body += etf_context_html(r.get('etf_return_context'))
-    body += '<h2>Risk and positioning</h2>'
-    w,g=r['weights'],r['regime']
-    body += f'<p>{r["underwater_days"]} calendar days below the high-water mark. Top-five concentration: {w["concentration"]["top5"]:.1%}. Defensive allocation: {w["cash_pct"]:.1%}.</p>'
-    body += '<div class="card" style="padding:12px;border:1px solid #e2e0d8;background:#ffffff"><strong style="font-size:14px">Current drawdown</strong><br>'+bar_html(drawdown_bar(r))+f'<p class="small" style="margin-bottom:0">Track ends at the historical maximum drawdown of {pct(r["risk_rows"][0]["max_dd"])} through {r["nav_date"]}. Historical context, not a loss limit.</p></div>'
-    body += f'<p class="small">Model holdings anchor: {r["meta"].get("portfolio_anchor",r["meta"]["asOf"])}. Gate: {escape(g["state"].replace("_"," ").lower())}. Defensive allocation may include short-duration Treasury funds.</p>'
-    body += table(['Window','CAGR','Volatility','Sharpe'],[[{'Full published history (includes backtest)':'Full history','Trailing 3 years':'3 years','Trailing 1 year':'1 year'}[x['period']],pct(x['cagr']),pct(x['vol']),number(x['sharpe'])] for x in r['risk_rows']])
-    body += '<p class="small">Through '+r['nav_date']+'. Full history includes backtest. Sharpe uses the published Treasury-bill proxy; annualisation assumes 252 observations. Estimates and methodology in the PDF.</p>'
-    risks={x['name']:x['risk_pct'] for x in r['risk_contributors']}
-    allocations=sorted(w['rows'],key=lambda x:x['weight'],reverse=True)[:3]
-    body += '<h2>Largest allocations</h2>'
-    body += table(['Holding','NAV weight','Risk share*'],[[x['name'],BarValue(x['weight'],1,'weight',f'{x["weight"]:.1%}'),BarValue(risks.get(x['name']),1,'risk',f'{risks[x["name"]]:.1%}' if x['name'] in risks else '-')] for x in allocations])
-    body += '<p class="small">Blue = share of NAV; teal = estimated share of portfolio risk. Both tracks run from 0 to 100%, with different denominators. *Only the three largest portfolio risk contributors are available here; a dash is not zero.</p>'
-    body += '<div class="card" style="background:#ffffff;border:1px solid #e2e0d8;padding:18px;margin-top:24px"><strong>Attached: the portfolio review PDF</strong><p style="margin-bottom:0">Includes the full risk scorecard, attribution, valuation dates and calculation conventions. No portfolio action is implied by this report.</p></div>'
+    date_line = f'US close {r["nav_date"]} · Model NAV in USD'
+    body = '<h1 style="margin:8px 0;font:32px/1.18 Georgia,serif">' + escape(title) + '</h1>'
+    body += '<p style="margin:0 0 16px;color:#525650">' + escape(date_line) + '</p>'
+    text = [title, date_line]
+    if preview:
+        body = '<p style="color:#805200">Design preview</p>' + body
+        text.insert(0, 'Design preview')
+    periods = {row['period']: row for row in r['performance']}
+    body += '<table style="width:100%;max-width:540px;border-collapse:collapse"><thead><tr>'
+    headers = ('Period', 'Model', 'S&P 500 TR proxy', 'Excess')
+    for index, header in enumerate(headers):
+        align = 'right' if index else 'left'
+        body += f'<th scope="col" style="text-align:{align};padding:4px;font-size:13px;color:{MUTED}">{escape(header)}</th>'
+    body += '</tr></thead><tbody>'
+    text.append(' · '.join(headers))
+    for key, label in [('1 session', '1D'), ('1 week', '1W'), ('YTD', 'YTD')]:
+        row = periods.get(key, {})
+        relative = excess(row)
+        model = pct(row['model']) if 'model' in row else '–'
+        proxy = pct(row['SPY']) if row.get('SPY') is not None else '–'
+        values = (model, proxy, relative.text)
+        cell = f'padding:5px 4px;border-top:1px solid {BORDER}'
+        body += f'<tr><th scope="row" style="{cell};text-align:left">{label}</th>'
+        for value, colour in zip(values, (INK, MUTED, relative.colour)):
+            body += f'<td style="{cell};text-align:right;white-space:nowrap;color:{colour}">{value}</td>'
+        body += '</tr>'
+        text.append(' · '.join((label, *values)))
+    body += '</tbody></table>'
+
+    period = r['attribution']['periods']['1D']
+    heading = 'Largest daily ETF contributions'
+    body += f'<h2>{heading}</h2>'
+    text.extend(['', heading])
+    selected = daily_drivers(r['attribution'], r.get('etf_return_context'))
+    if selected:
+        headers = ('ETF', '1D return', 'Start wt.', 'Impact')
+        body += '<table style="width:100%;max-width:600px;border-collapse:collapse"><thead><tr>'
+        for i, header in enumerate(headers):
+            align = 'right' if i else 'left'
+            body += f'<th scope="col" style="padding:4px;text-align:{align};font-size:13px;color:{MUTED}">{header}</th>'
+        body += '</tr></thead><tbody>'
+        text.append(' · '.join(headers))
+    for row in selected:
+        holding = f'{row["name"]} ({row["ticker"]})'
+        etf_return = pct(row['usd_return']) if row['usd_return'] is not None else '–'
+        weight = f'{row["avg_weight"]:.2%}'
+        impact = bp(row['contrib'])
+        colour = GREEN if row['contrib'] > 0 else RED
+        cell = f'padding:6px 4px;border-top:1px solid {BORDER};vertical-align:top'
+        body += f'<tr><th scope="row" style="{cell};text-align:left;font-weight:normal">{escape(holding)}</th>'
+        for value in (etf_return, weight):
+            body += f'<td style="{cell};text-align:right;white-space:nowrap">{value}</td>'
+        body += f'<td style="{cell};text-align:right;white-space:nowrap;color:{colour}"><strong>{impact}</strong></td></tr>'
+        text.append(' · '.join((holding, etf_return, weight, impact)))
+    if selected:
+        body += '</tbody></table>'
+    notes = []
+    if period['status'] == 'unavailable':
+        notes.append('Daily ETF attribution is unavailable.')
+    elif not selected:
+        notes.append('No signed contribution among priced holdings.')
+    else:
+        net = bp(sum(row['contrib'] for row in selected))
+        notes.append(f'Combined impact {net}, versus {bp(period["model_return"])} for the model. '
+                     'Impact uses the starting NAV weight and the ETF’s USD return. Ranked by absolute impact.')
+    if period['status'] == 'review':
+        notes.append(f'Attribution under review. ETF residual {bp(period["etf_residual"])}, '
+                     f'strategy residual {bp(period["strategy_residual"])}.')
+    if period.get('coverage') is not None and period['coverage'] < .999999:
+        notes.append(f'Price coverage {period["coverage"]:.1%}.')
+    note = ' '.join(notes)
+    body += '<p style="margin:8px 0;color:#525650;font-size:13px">' + escape(note) + '</p>'
+    text.append(note)
+
+    market = build_commentary(r).get('spotlight')
+    if market:
+        timing = ' · after the US close' if market['after_close'] else ''
+        heading = 'Market watch' + timing
+        body += '<h2>' + heading + '</h2>'
+        body += ('<p style="margin:0;max-width:68ch"><strong>' + escape(market['title']) +
+                 '</strong> (' + escape(market['confidence']) + '). ' + escape(market['summary']) + '</p>')
+        exposure = 'Portfolio read-through: ' + market['view']
+        body += '<p style="margin:4px 0">' + escape(exposure) + '</p>'
+        holdings = 'Linked holdings: ' + ', '.join(market['held'])
+        links = [f'<a href="{escape(s["url"], quote=True)}">{escape(s["publisher"])}</a>' for s in market['sources']]
+        body += '<p style="margin:4px 0;font-size:13px">' + escape(holdings) + ' · ' + ' / '.join(links) + '</p>'
+        text.extend(['', heading, f'{market["title"]} ({market["confidence"]}).', market['summary'], exposure, holdings])
+        text.extend(s['publisher'] + ' · ' + s['url'] for s in market['sources'])
     if r.get('dashboard_note'):
-        body += '<p class="small">' + escape(r['dashboard_note']) + '</p>'
-    return shell(title,body)
+        body += '<p style="font-size:13px;color:#525650">' + escape(r['dashboard_note']) + '</p>'
+        text.append(r['dashboard_note'])
+    attachment = 'Attached PDF · 1D and 1M attribution by ETF and strategy, risk and full market commentary.'
+    body += '<p style="border-top:1px solid #deded8;padding-top:12px"><strong>' + escape(attachment) + '</strong></p>'
+    basis = 'S&P 500 total-return proxy uses SPY adjusted close.'
+    body += '<p style="margin:0;font-size:13px;color:#525650">' + basis + '</p>'
+    text.extend(['', attachment, basis, 'Personal paper portfolio · USD', 'Dashboard: ' + PAGE, 'Source data: ' + URL])
+    return shell(title, body, wide=True), '\n'.join(text)
+
+
+def report_html(r, preview=False):
+    return email_digest(r, preview)[0]
 
 
 def report_pdf(r, path, preview=False):
@@ -382,7 +409,8 @@ def report_pdf(r, path, preview=False):
 
 def write_bundle(r, directory, preview=False):
     out=Path(directory); out.mkdir(parents=True,exist_ok=True)
-    (out/'report.html').write_text(report_html(r,preview),encoding='utf-8')
-    (out/'report.txt').write_text(r['body'],encoding='utf-8')
+    html, text = email_digest(r, preview)
+    (out/'report.html').write_text(html,encoding='utf-8')
+    (out/'report.txt').write_text(text,encoding='utf-8')
     report_pdf(r,out/'portfolio-review.pdf',preview)
     return out

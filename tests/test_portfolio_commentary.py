@@ -37,3 +37,16 @@ def test_after_close_label_and_exited_holdings_are_explicit():
 def test_html_escapes_non_markup_text():
     r=report();r['market_context']['developments'][0]['title']='Supply & demand'
     assert 'Supply &amp; demand' in html(r)
+
+
+def test_email_spotlight_prefers_matching_current_exposure_and_labels_timing():
+    r=report()
+    items=r['market_context']['developments']
+    second=deepcopy(items[0])
+    second.update(title='Later item',event_time_utc='2026-11-04T22:00:00Z')
+    items[0]['affected_tickers']=['QQQ']
+    items.append(second)
+    pick=build(r)['spotlight']
+    assert pick['title']=='Later item' and pick['held']==['SPY'] and pick['after_close']
+    second['affected_tickers']=['QQQ']
+    assert build(r)['spotlight'] is None

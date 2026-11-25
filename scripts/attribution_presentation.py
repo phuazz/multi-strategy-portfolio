@@ -38,3 +38,19 @@ def bridge_text(p):
     return (f'Known ETF marks {bp(p["etf_total"])} + unexplained residual {bp(p["etf_residual"])} '
             f'= model {bp(p["model_return"])}. Strategy residual {bp(p["strategy_residual"])}. '
             f'Price coverage {p["coverage"]:.1%} of held weight-days. Displayed sums may differ through rounding.')
+
+
+def daily_drivers(attribution, etf_context=None):
+    validate(attribution)
+    period = attribution['periods']['1D']
+    if period['status'] == 'unavailable':
+        return []
+    priced = (row for row in period['etf'] if row['contrib'] not in (None, 0))
+    selected = sorted(priced, key=lambda row: (-abs(row['contrib']), row['ticker']))[:5]
+    returns = {}
+    if etf_context:
+        window = etf_context['periods']['1D']
+        if (window['start'], window['end']) != (period['start'], period['end']):
+            raise ValueError('Daily ETF return dates differ from contribution dates')
+        returns = {row['ticker']: row['return'] for row in window['rows']}
+    return [dict(row, usd_return=returns.get(row['ticker'])) for row in selected]

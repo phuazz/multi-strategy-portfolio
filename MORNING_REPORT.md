@@ -54,12 +54,18 @@ the claim only after verifying it did not send. Do not blindly rerun an uncertai
 
 ## Report and publication checks
 
-The HTML email contains the session/YTD/drawdown figures, matched-period returns,
-a compact risk table, positioning and historical 1D/1M attribution. The A4 PDF
-adds full risk ratios, benchmark-relative statistics, every historical ETF row,
-valuation windows, sources and methodology (guarded at three to six pages; six
-with portfolio and full ETF risk context). Both derive from the same report object. Source and dashboard links are
-clickable. The plain-text alternative remains available for email clients.
+The HTML and plain-text email show 1D, trailing 1W and YTD returns for the
+model and S&P 500 total-return proxy, with arithmetic excess on matched dates.
+The body ranks up to five priced ETFs by absolute daily contribution. Each row
+pairs the ETF’s matched USD return with its beginning-of-session NAV weight
+and signed portfolio impact in basis points. The summary compares their combined
+impact with the full model return and flags attribution
+exceptions. Equal magnitudes are ordered by ticker. It includes one sourced development when
+the validated briefing identifies a current holding. Selection uses the greatest
+combined current weight of matched holdings, with briefing order breaking ties.
+
+The email uses a fluid, centred layout up to 800 pixels wide. The attached A4
+PDF contains the full performance, risk, attribution and market review.
 
 Colour and data bars support scanning: green/red for signed returns and contributions,
 blue for NAV weights and teal for estimated risk shares. Absolute-return bars use one
@@ -78,11 +84,9 @@ the figures. This is descriptive risk context, not a z-score or probability band
 See [RETURN_CONTEXT.md](RETURN_CONTEXT.md). Attribution bars remain in basis points.
 
 ETF-level risk context uses each instrument's full-window USD adjusted return
-and own prior volatility, independently of portfolio weights. The email shows
-the three largest absolute volatility-unit moves among current holdings for each
-horizon, alongside historical contribution in bp. The PDF includes the complete
-ETF comparison. Exited positions retain full-window price context but do not
-enter the email's current-holdings ranking. Income and carry are included, so the
+and own prior volatility, independently of portfolio weights. The PDF includes
+the complete ETF comparison. Exited positions retain full-window price context.
+Income and carry are included, so the
 ratio is not statistical surprise. Per-ETF price and estimation details are
 available on the dashboard; unavailable estimates are not shown as zero.
 
@@ -95,8 +99,8 @@ Portfolio risk context follows on page 3; the complete ETF table and own-volatil
 gauges remain in the appendix. A rendered-content guard requires the selected ETF
 leaders and all strategies to fit page 2.
 
-A private portfolio-manager commentary box appears on PDF page 1 and near the top
-of the email. The existing X briefing producer attaches a small structured JSON
+The full private portfolio-manager commentary appears on PDF page 1.
+The existing X briefing producer attaches a small structured JSON
 companion to its existing private email. The portfolio job reads the newest three
 matching INBOX messages through Gmail IMAP, using read-only selection and
 BODY.PEEK so it does not mark mail as read. It verifies the exact sender, subject
@@ -123,8 +127,9 @@ add them to the public dataset/dashboard, upload them as Actions artifacts or
 print them in runner logs. The workflow uploads only content-free `check.json`.
 Use the manual workflow input `context_check_only` for a read-only transport
 check with no email or ledger mutation. It reports a status code only.
-Content guards require every commentary paragraph and source link in both PDF
-and email. A producer schema pass establishes structure and timing, not the truth
+Content guards check all commentary and sources in the PDF and the selected
+development, figures and sources in both email formats.
+A producer schema pass establishes structure and timing, not the truth
 of market claims; source confidence remains visible.
 
 Holding contributions use historical published model holdings, effective after
@@ -136,9 +141,8 @@ to the official model return. See [ATTRIBUTION.md](ATTRIBUTION.md).
 The primary comparator is labelled S&P 500 TR proxy (SPY adjusted close), with an
 explicit arithmetic excess-return column in percentage points for every period.
 This is a fund total-return proxy, not literal SPX price return or exact index return.
-The global 60/40 comparator remains in the PDF. Positive and negative contribution
-panels show the largest three verified holdings in each direction for both 1D and
-1M on a common basis-point scale within each period. A strategy table compares the
+The global 60/40 comparator remains in the PDF. Its attribution summary shows
+up to five positive and five negative holdings for both 1D and 1M. A strategy table compares the
 two horizons. The PDF includes all ETF names and owning strategies, monthly average
 weights and both contributions. Missing open-session prices produce a dash, never
 a fabricated zero; known partial marks remain in the reconciliation bridge. Coverage

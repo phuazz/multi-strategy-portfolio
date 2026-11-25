@@ -92,15 +92,31 @@ def verify_attribution_content(report, pdf_path, html_path):
         assert row['name'] in page_two,'Page 2 strategy missing'
     html=Path(html_path).read_text(encoding='utf-8')
     from html import unescape, escape
-    email=' '.join(unescape(re.sub('<[^>]+>', ' ', html)).split())
+    email=' '.join(unescape(re.sub('<[^>]+>', ' ', html.split('</head>',1)[1])).split())
+    plain=Path(html_path).with_suffix('.txt').read_text(encoding='utf-8')
     from portfolio_commentary import build as build_commentary
     commentary=build_commentary(report)
-    assert 'Portfolio manager commentary' in page_one and 'Portfolio manager commentary' in email
+    assert 'Portfolio manager commentary' in page_one
     for label,paragraph in commentary['paragraphs']:
         expected=' '.join((label+'. '+paragraph).split())
-        assert expected in page_one and expected in email,'Commentary text missing or split beyond page 1'
+        assert expected in page_one,'Commentary text missing or split beyond page 1'
     for source in commentary['sources']:
-        assert source['url'] in links and escape(source['url'],quote=True) in html,'Market source link missing'
+        assert source['url'] in links,'PDF market source link missing'
+    spotlight=commentary.get('spotlight')
+    if spotlight:
+        for value in (spotlight['title'], spotlight['summary'], spotlight['view'], spotlight['confidence']):
+            assert value in email and value in plain,'Email market insight missing'
+        for source in spotlight['sources']:
+            assert escape(source['url'],quote=True) in html and source['url'] in plain
+    assert len(email.split()) <= 300 and len(html.encode('utf-8')) < 25_000,'Morning email exceeds digest budget'
+    from render_morning import excess, pct
+    for value in ('Largest daily ETF contributions', report['nav_date'], 'Attached PDF'):
+        assert value in email and value in plain,'Email session readout missing'
+    for key,label in [('1 session','1D'), ('1 week','1W'), ('YTD','YTD')]:
+        row=next((row for row in report['performance'] if row['period']==key), {})
+        values=(label, pct(row['model']) if 'model' in row else '–',
+                pct(row['SPY']) if row.get('SPY') is not None else '–', excess(row).text)
+        assert ' '.join(values) in email and ' · '.join(values) in plain,'Email performance row mismatch'
     attribution=report['attribution']
     etfs=comparison_rows(attribution,'etf')
     for row in etfs:
@@ -108,20 +124,21 @@ def verify_attribution_content(report, pdf_path, html_path):
         for horizon in ('1D','1M'):
             assert bp(row[horizon]) in text, f'PDF contribution missing: {row["ticker"]} {horizon}'
     for row in comparison_rows(attribution,'strategy'):
-        assert row['name'] in text and row['name'] in email, f'Strategy missing: {row["name"]}'
+        assert row['name'] in text, f'Strategy missing: {row["name"]}'
     for horizon in ('1D','1M'):
-        assert horizon in text and horizon in email
-        for side in ('positive','negative'):
-            for row in leaders(attribution,horizon)[side][:3]:
-                assert row['ticker'] in email and bp(row['contrib']) in email, 'Email leader missing'
+        assert horizon in text
+    from attribution_presentation import daily_drivers
+    for row in daily_drivers(attribution,report.get('etf_return_context')):
+        values=(f'{row["name"]} ({row["ticker"]})', pct(row['usd_return']) if row['usd_return'] is not None else '–',
+                f'{row["avg_weight"]:.2%}', bp(row['contrib']))
+        assert ' '.join(values) in email and ' · '.join(values) in plain, 'Email driver row mismatch'
     if report.get('return_context'):
         from return_context import rows
         from return_context_visuals import RiskMove
-        assert 'Return context and risk' in text and 'How large was the move relative to risk?' in email
+        assert 'Return context and risk' in text
         for row in rows(report['return_context']):
-            assert RiskMove(row['units']).text in text and RiskMove(row['units']).text in email,'Risk-unit label missing'
+            assert RiskMove(row['units']).text in text,'Risk-unit label missing'
     if report.get('etf_return_context'):
-        from etf_return_context import leaders as etf_leaders
         from return_context_visuals import RiskMove
         context=report['etf_return_context']
         for hz,p in context['periods'].items():
@@ -129,10 +146,6 @@ def verify_attribution_content(report, pdf_path, html_path):
                 assert '('+row['ticker']+')' in text,'ETF risk row absent from PDF'
                 label=RiskMove(row['units']).text if row['units'] is not None else 'Risk units unavailable'
                 assert label in text,'ETF risk-unit label absent from PDF'
-            for row in etf_leaders(context,hz):
-                assert row['ticker'] in email and RiskMove(row['units']).text in email,'ETF risk leader absent from email'
-        assert 'ETF moves relative to their own risk' in email
-        assert len(html.encode('utf-8'))<100_000,'Email risks Gmail clipping'
     return {'etf_rows':len(etfs),'horizons':['1D','1M'],'rendered_content':'pass'}
 
 
