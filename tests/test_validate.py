@@ -205,6 +205,7 @@ def test_only_historical_dashboard_gaps_can_clear_mail():
     health = validate.run(_bundle(), REG, RUN, _OK_STATS, True, "fixture",
                           now_utc=NOW, benchmarks=benchmarks)
     assert health["dashboard_only_history_gaps"] == ["STI FX SGDUSD=X 2019-05-22"]
+    assert health["messages"] == ["Benchmark STI (USD) (valuation): missing FX rate on 2019-05-22."]
     assert not check(fetched=False)
     assert not check(_bundle(panel_end="2026-05-20"))
     assert not check(_bundle(since="2026-05-02"))

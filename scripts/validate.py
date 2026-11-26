@@ -152,6 +152,8 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
                           + valuation.get("missingFxDates", [])))
         if gaps:
             f["missingValuationDates"] = gaps
+            f["missingFxDates"] = valuation.get("missingFxDates", [])
+            f["missingNativeDates"] = valuation.get("missingNativeDates", [])
             if f["level"] == "ok":
                 if (key not in MORNING_BENCHMARKS and asof == price_asof
                         and bm.get("equity") and gaps[-1] < price_asof):
@@ -167,7 +169,8 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     only_ancillary_gaps = (bench_ok and bool(ancillary_gaps)
                            and MORNING_BENCHMARKS.keys() <= (benchmarks or {}).keys()
                            and {f["feed"] for f in feeds if f["level"] != "ok"} == set(ancillary_gaps))
-    bench_ok = bool(bench_ok and all(f["level"] == "ok" for f in benchmark_feeds))
+    download_ok = bench_ok
+    bench_ok = bool(download_ok and all(f["level"] == "ok" for f in benchmark_feeds))
 
     messages = []
 
@@ -188,8 +191,11 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         elif f.get("missingNAVValuation") and not lag:
             messages.append(f"{f['feed']}: no observed valuation for live NAV date {f['versus']}.")
         elif f.get("missingValuationDates") and not lag:
-            messages.append(f"{f['feed']}: missing observed native closes or FX on "
-                            f"{len(f['missingValuationDates'])} valuation date(s); gaps are not filled.")
+            for field, label in (("missingNativeDates", "native close"), ("missingFxDates", "FX rate")):
+                dates = f[field]
+                if dates:
+                    remaining = f" and {len(dates) - 3} more" if len(dates) > 3 else ""
+                    messages.append(f"{f['feed']}: missing {label} on {', '.join(dates[:3])}{remaining}.")
         elif f.get("versus"):
             messages.append(
                 f"{f['feed']} is {lag} NYSE session{'' if lag == 1 else 's'} behind the live NAV "
@@ -224,7 +230,7 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         messages.append("Recomputed stats diverge from engine figures beyond tolerance "
                         f"(diffs={reconcile.get('diffs')}).")
 
-    if not bench_ok:
+    if not download_ok:
         messages.append(f"Benchmark feed incomplete or stale: {bench_note}.")
 
     level = max((f["level"] for f in feeds), key=lambda lv: _RANK[lv])

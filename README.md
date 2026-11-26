@@ -69,6 +69,14 @@ validity of an earlier holiday valuation. Missing benchmarks each receive a
 health row. A daily constant-mix benchmark stops at an unobserved leg return
 rather than inventing a zero return or resuming an unknowable path.
 
+For an interior gap in the STI comparator's SGD/USD series, the monitor can
+use the reciprocal of the Federal Reserve H.10 New York noon rate (DEXSIUS).
+It requires a valid native ETF valuation and an ECB reference cross on the
+same date within 10 basis points. The published dataset records both fixings,
+their sources and the difference. Subsequent builds reuse the archived
+observations and give a restored primary quote precedence. The current close
+still requires a primary FX observation.
+
 **The S&P 500 benchmark is the engine's series (2026-09-06).** `data/benchmark_spy.json` —
 the engine's committed export of adjusted SPY closes, the series behind its weekly email and
 factsheet — is the base of this page's S&P curve; yfinance only chains daily returns after
