@@ -41,7 +41,9 @@ const server=http.createServer((req,res)=>{
     await sections.nth(0).locator(':scope > summary').click();
     const rows=sections.nth(0).locator('tbody > tr');
     assert.equal(await rows.count(),await page.evaluate(()=>DS.construction_risk.scenarios.length));
-    assert.deepEqual(await rows.locator('td:nth-child(2)').allInnerTexts(),await page.evaluate(()=>DS.construction_risk.scenarios.map(s=>isNum(s.total)?pctSigned(s.total,2):'Unavailable')));
+    assert.deepEqual(await rows.locator('[data-impact]').allInnerTexts(),await page.evaluate(()=>DS.construction_risk.scenarios.map(s=>isNum(s.total)?pctSigned(s.total,2):'Unavailable')));
+    assert.deepEqual(await rows.locator('[data-coverage]').allInnerTexts(),await page.evaluate(()=>DS.construction_risk.scenarios.map(s=>['shocked','flat','unpriced'].map(k=>pct(s.coverage[k],2)).join(' / '))));
+    assert.match(await panel.locator('[data-gated]').innerText(), /50% shift to SHY: \+3\.04%/);
     await rows.first().locator('summary').click();
     assert.ok((await rows.first().innerText()).includes('Unpriced holdings'));
     await rows.first().locator('summary').click();
@@ -49,6 +51,8 @@ const server=http.createServer((req,res)=>{
     await sections.nth(0).locator(':scope > summary').click();
     await sections.nth(1).locator(':scope > summary').click();
     assert.equal(await sections.nth(1).locator('tbody > tr').count(),await page.evaluate(()=>DS.construction_risk.gaps.length));
+    assert.match(await panel.locator('[data-proxy]').innerText(), /8\.79% of NAV.*NAV loss 0\.88%/);
+    if(width===1280) await sections.nth(1).screenshot({path:path.join(output,'gap-sizing-1280.png')});
     const detail=await panel.evaluate(panel=>{
       const viewport=document.documentElement.clientWidth;
       const visible=[...panel.querySelectorAll('*')].filter(e=>e.checkVisibility()&&e.getBoundingClientRect().height);

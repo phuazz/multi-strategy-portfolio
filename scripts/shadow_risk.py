@@ -15,6 +15,7 @@ import pandas_market_calendars as mcal
 from config import TRADING_DAYS_PER_YEAR
 
 POLICIES = Path(__file__).resolve().parents[1] / "portfolios" / "risk"
+UNRESOLVED = "Unresolved sleeve"
 
 
 def number(value):
@@ -79,13 +80,22 @@ def anchored_legs(live, registry, overlay):
             legs[ticker][sleeve] = alloc
             continue
         data = live.get("sleeve_extensions", {}).get(cfg["key"], {})
-        if data.get("anchor_date") != live.get("anchor_date"):
-            return {}, {}
-        for ticker, weight in data.get("weights", {}).items():
-            if not number(weight) or weight < 0:
-                return {}, {}
+        weights = data.get("weights")
+        if (not live.get("anchor_date") or data.get("anchor_date") != live["anchor_date"]
+                or not isinstance(weights, dict) or not weights
+                or not all(number(w) and w >= 0 for w in weights.values())):
+            continue
+        total = sum(weights.values())
+        if total > 1.001:
+            continue
+        # Match upstream normalisation of four-decimal within-sleeve weights.
+        divisor = total if abs(total - 1) <= .001 else 1
+        for ticker, weight in weights.items():
             if weight:
-                legs[ticker][sleeve] = alloc * weight
+                legs[ticker][sleeve] = alloc * weight / divisor
+        if total < .999:
+            reserve = overlay["gate_parameters"]["fallback_ticker"]
+            legs[reserve][sleeve] = legs[reserve].get(sleeve, 0) + alloc * (1 - total)
     if gate:
         allocations["DEFENSIVE"] = gate
         legs[overlay["gate_parameters"]["fallback_ticker"]]["DEFENSIVE"] = gate
@@ -100,9 +110,11 @@ def sleeve_weights(row, legs):
         total = sum(parts.values())
         if total and abs(total - weight) <= (len(parts) + 1) * 0.00005:
             return {key: value * weight / total for key, value in parts.items()}
-        return {"Unresolved sleeve": weight}
+        if 0 < total < weight:
+            return {**parts, UNRESOLVED: weight - total}
+        return {UNRESOLVED: weight}
     if row["sleeve"] == "CASH":
-        return {"Treasury reserve (origin unresolved)": weight}
+        return {UNRESOLVED: weight}
     legs = row.get("build") or []
     if legs and all(number(x.get("contrib")) and x.get("sleeve") for x in legs):
         parts = defaultdict(float)
@@ -111,22 +123,25 @@ def sleeve_weights(row, legs):
         total = sum(parts.values())
         if total and abs(total - weight) <= (len(legs) + 1) * 0.00005:
             return {key: v * weight / total for key, v in parts.items()}
-    return {"Unresolved sleeve": weight}
+    return {UNRESOLVED: weight}
 
 
 def stress(rows, scenario):
     by_sleeve, by_factor = defaultdict(float), defaultdict(float)
     positions, missing = [], []
+    coverage = {"shocked": 0.0, "flat": 0.0, "unpriced": 0.0}
     hedge_pnl = 0.0
     hedge_known = True
     for row in rows:
         group = row["group"]
         if group not in scenario["prices"] and group not in scenario.get("flat", []):
             missing.append(row["ticker"])
+            coverage["unpriced"] += abs(row["weight"])
             if group is None or row.get("isHedge"):
                 hedge_known = False
             continue
         shock = scenario["prices"].get(group, 0)
+        coverage["shocked" if shock else "flat"] += abs(row["weight"])
         pnl = row["weight"] * shock
         if row.get("isHedge"):
             hedge_pnl += pnl
@@ -136,7 +151,7 @@ def stress(rows, scenario):
             by_sleeve[sleeve] += weight * shock
     covered = sum(p["pnl"] for p in positions)
     return {**scenario, "total": None if missing else covered, "coveredPnl": covered,
-            "missing": missing, "positions": sorted(positions, key=lambda p: p["pnl"]),
+            "coverage": coverage, "missing": missing, "positions": sorted(positions, key=lambda p: p["pnl"]),
             "sleeves": dict(by_sleeve), "factors": dict(by_factor),
             "hedgePnl": hedge_pnl if hedge_known else None}
 
@@ -174,7 +189,30 @@ def gap_limits(rows, policy, allocations):
         item.update(loss=size * shock, constraints=constraints, cap=min(constraints.values()),
                     binding=min(constraints, key=constraints.get),
                     review=size > min(constraints.values()) + .000005)
+        if UNRESOLVED in row["parts"]:
+            # A proven breach survives incomplete ownership. An incomplete pass
+            # cannot establish either a ceiling or clearance to increase size.
+            item.update(cap=None, binding="Sleeve ownership incomplete",
+                        review=True if item["review"] else None)
     return limits
+
+
+def shared_proxies(rows, gaps):
+    """Common symmetric price gap on signed weights, grouped by execution proxy."""
+    groups = defaultdict(list)
+    for row, gap in zip(rows, gaps, strict=True):
+        if row.get("tradeAs"):
+            groups[row["tradeAs"]].append(gap)
+    output = []
+    for proxy, positions in groups.items():
+        if len(positions) < 2:
+            continue
+        shocks = {p["shock"] for p in positions}
+        shock = shocks.pop() if len(shocks) == 1 else None
+        net = sum(p["weight"] for p in positions)
+        output.append({"proxy": proxy, "tickers": [p["ticker"] for p in positions],
+                       "net": net, "shock": shock, "loss": abs(net)*shock if shock is not None else None})
+    return output
 
 
 def historical_path(equity):
@@ -235,6 +273,18 @@ def build(dataset, policy, *, legs=None, allocations=None):
             abs(sum(r["weight"] for r in rows) - 1) > len(rows) * .000005 + 1e-10):
         return {"status": "unavailable", "reason": "Undated book or weights do not reconcile to NAV."}
     scenarios = [stress(rows, s) for s in policy["scenarios"]]
+    regime = dataset.get("regime", {})
+    gate_state = regime.get("live_state")
+    fraction = regime.get("derisk_fraction")
+    reserve = regime.get("fallback_ticker")
+    reserve_group = by_ticker.get(reserve)
+    for scenario in scenarios:
+        if (scenario.get("compareDefensiveGate") and gate_state == "RISK_ON"
+                and scenario["total"] is not None and number(fraction) and 0 < fraction <= 1
+                and reserve_group in scenario["prices"]):
+            reserve_return = scenario["prices"][reserve_group]
+            scenario["gateComparison"] = {"fraction": fraction, "reserve": reserve,
+                                          "total": (1-fraction)*scenario["total"] + fraction*reserve_return}
     complete = [s for s in scenarios if s["total"] is not None]
     worst = min(complete, key=lambda x: x["total"]) if complete else None
     known = all(r["group"] for r in rows)
@@ -242,11 +292,12 @@ def build(dataset, policy, *, legs=None, allocations=None):
     for r in rows:
         factors[r["group"] or "unmapped"] += abs(r["weight"])
     net = sum(r["weight"] for r in rows) if known else None
+    gaps = gap_limits(rows, policy["gap"], allocations or {})
     return {"status": "shadow", "version": policy["version"], "anchor": meta["portfolio_anchor"],
             "history": historical_path(dataset["equity"]), "gross": sum(factors.values()) if known else None,
             "net": net, "preHedgeNet": sum(r["weight"] for r in rows if not r.get("isHedge")) if known else None,
             "grossByBucket": dict(factors),
             "equityNet": sum(r["weight"] for r in rows if r["assetClass"] == "Equity") if known else None,
             "worst": {"name": worst["name"], "total": worst["total"]} if worst else None,
-            "complete": len(complete), "scenarios": scenarios,
-            "gaps": gap_limits(rows, policy["gap"], allocations or {})}
+            "gateState": gate_state, "complete": len(complete), "scenarios": scenarios,
+            "gaps": gaps, "sharedProxies": shared_proxies(rows, gaps)}

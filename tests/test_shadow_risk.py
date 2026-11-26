@@ -82,7 +82,10 @@ def test_shared_reserve_and_overlay_legs(policy):
     assert s["sleeves"]["A"] == pytest.approx(.2 * .006 - .2 * .09)
     assert s["sleeves"]["TILT"] == pytest.approx(-.1 * .10)
     live["sleeve_extensions"]["base"]["anchor_date"] = "2024-12-31"
-    assert risk.anchored_legs(live, reg, overlay) == ({}, {})
+    partial, _ = risk.anchored_legs(live, reg, overlay)
+    assert dict(partial) == {"EEM": {"TILT": .1}, "SHY": {"DEFENSIVE": .5}}
+    parts = risk.sleeve_weights(ds["weights"]["rows"][1], partial)
+    assert parts == pytest.approx({"DEFENSIVE": .5, "Unresolved sleeve": .2})
     unknown = risk.build(ds, policy, legs={})["scenarios"][-1]
     assert list(unknown["sleeves"]) == ["Unresolved sleeve"]
 
@@ -99,6 +102,56 @@ def test_tightest_available_cap_and_treasury_yield_coverage(policy):
     assert g["review"]
     s = next(s for s in out["scenarios"] if s["name"] == "US Treasury yields up")
     assert s["total"] is None and s["missing"] == ["SHY"]
+
+
+def test_stale_unrelated_sleeve_cannot_clear_a_gap_flag(policy):
+    ds = book(("SPY", .85), ("SHY", .15))
+    p = policy["gap"]["lossBudgets"]["sleeve"]
+    p["C"] = .001
+    reg = {"sleeves": {s: {"key": s, "alloc": w} for s, w in (("A", .5), ("B", .4), ("C", .1))}}
+    live = {"anchor_date": "2025-01-03", "regime_state": "RISK_ON", "eem_tilt_active": False,
+            "sleeve_extensions": {s: {"anchor_date": "2025-01-03", "weights": weights} for s, weights in
+                                 (("A", {"SPY": 1}), ("B", {"SHY": .125, "SPY": .875}), ("C", {"SHY": 1}))}}
+    def check():
+        legs, alloc = risk.anchored_legs(live, reg, {})
+        result = risk.build(ds, policy, legs=legs, allocations=alloc)
+        return result["gaps"][1]
+    assert check()["cap"] == pytest.approx(.075)
+    live["sleeve_extensions"]["A"]["anchor_date"] = None
+    assert check()["review"] is True and check()["cap"] == pytest.approx(.075)
+    live["sleeve_extensions"]["C"]["anchor_date"] = None
+    assert check()["review"] is None and check()["cap"] is None
+    policy["gap"]["positionCaps"]["SHY"] = .1
+    assert check()["review"] is True and check()["cap"] is None
+
+
+def test_coverage_gate_and_shared_proxy(policy):
+    ds = book(("SPY", .6), ("CSP1", .2), ("SHY", .2))
+    for row in ds["weights"]["rows"][:2]:
+        row["tradeAs"] = "SPY"
+    ds["regime"] = {"live_state": "RISK_ON", "derisk_fraction": .5, "fallback_ticker": "SHY"}
+    out = risk.build(ds, policy)
+    sc = {s["name"]: s for s in out["scenarios"]}
+    nasdaq = next(s for s in sc.values() if s["name"].startswith("Nasdaq"))
+    assert nasdaq["total"] == 0 and nasdaq["coverage"] == {"shocked": 0, "flat": 1, "unpriced": 0}
+    assert sc["US Treasury yields up"]["coverage"] == pytest.approx({"shocked": 0, "flat": .8, "unpriced": .2})
+    recovery = sc["Recovery shock on current weights"]
+    assert recovery["gateComparison"]["total"] == pytest.approx((.8*.08 - .2*.005)*.5 - .5*.005)
+    assert out["sharedProxies"][0]["loss"] == pytest.approx(.08)
+    for state in ("RISK_OFF", None):
+        ds["regime"]["live_state"] = state
+        assert all("gateComparison" not in s for s in risk.build(ds, policy)["scenarios"])
+
+
+def test_proxy_gap_respects_signs_and_incompatible_shocks(policy):
+    ds = book(("SPY", 1.2), ("CSP1", -.2))
+    for row in ds["weights"]["rows"]:
+        row["tradeAs"] = "SPY"
+    out = risk.build(ds, policy)
+    assert out["sharedProxies"][0]["loss"] == pytest.approx(.1)
+    assert out["scenarios"][-1]["coverage"]["shocked"] == pytest.approx(1.4)
+    ds["weights"]["rows"][1]["instrumentType"] = "option"
+    assert risk.build(ds, policy)["sharedProxies"][0]["loss"] is None
 
 
 @pytest.mark.parametrize("start", ["2023-01-31", "2023-12-29"])

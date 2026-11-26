@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "mode": "shadow",
   "governance": {
     "stress": "informational",
@@ -457,7 +457,8 @@
       "flat": []
     },
     {
-      "name": "Recovery from defensive positioning",
+      "name": "Recovery shock on current weights",
+      "compareDefensiveGate": true,
       "prices": {
         "us_equity": 0.08,
         "us_technology": 0.1,
