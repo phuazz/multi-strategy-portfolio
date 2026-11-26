@@ -4,9 +4,9 @@ import math
 
 
 def etf_label(ticker, name=None):
-    """Use the reserve role in prose and include its maturity range in tables."""
+    """Include the Treasury maturity range in both table and commentary labels."""
     if ticker == 'SHY':
-        return 'US Treasury reserve, 1–3 years (SHY)' if name is not None else 'Treasury reserve (SHY)'
+        return 'US Treasuries, 1–3 years (SHY)' if name is not None else '1–3 year US Treasuries (SHY)'
     return f'{name} ({ticker})' if name is not None else ticker
 
 

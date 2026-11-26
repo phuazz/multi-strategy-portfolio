@@ -181,9 +181,9 @@ def email_digest(r, preview=False):
         notes.append('Daily ETF attribution is unavailable.')
     elif bridge:
         if selected and selected[0]['ticker'] == 'SHY':
-            reserve = selected[0]
-            notes.append(f'The {reserve["avg_weight"]:.1%} {etf_label("SHY")} had the largest measured '
-                         f'active impact ({bp(reserve["active"])} versus SPY).')
+            holding = selected[0]
+            notes.append(f'The {holding["avg_weight"]:.1%} allocation to {etf_label("SHY")} had the largest '
+                         f'measured active impact ({bp(holding["active"])} versus SPY).')
         notes.append('Active = start weight × (ETF USD return − SPY return). Ranked by absolute active impact.')
         notes.append(f'Shown {bp(bridge["shown"])} · other priced {bp(bridge["other"])} · '
                      f'unassigned {bp(bridge["unassigned"])} = model excess {bp(bridge["total"])}.')
