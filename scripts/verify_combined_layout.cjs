@@ -75,7 +75,11 @@ async function run(){
         });
         const prose=els.find(e=>e.tagName==='P'&&e.textContent.length>110);
         const ctx=document.createElement('canvas').getContext('2d');ctx.font=getComputedStyle(prose).font;
-        return {reconciled,closes:daily.dates.length,lines:p.data.length,points:p.data[0].x.length,expected:b.curve.dates.length,
+        const periods=b.breadth_periods;
+        const bands=p.layout.shapes.every((band,i)=>band.x0===periods[i].entry&&band.x1===periods[i].exit&&band.yref==='paper'&&band.y0===0&&band.y1===1);
+        const differences=periods.map(r=>Number((r.combined-r.sentiment).toFixed(2)));
+        return {reconciled,bands,marks:p.querySelectorAll('.shapelayer path').length,labels:p.layout.annotations.map(a=>a.text),differences,
+          comparison:p.data[2].name,closes:daily.dates.length,lines:p.data.length,points:p.data[0].x.length,expected:b.curve.dates.length,
           finish:p.data[0].y.at(-1),end:b.stats.combined.end,rows:tables.map(t=>t.tBodies[0].rows.length),
           width:w,extra:document.documentElement.scrollWidth-w,over:els.filter(e=>e.getBoundingClientRect().right>w+1).length,
           minimum:Math.min(...els.map(e=>parseFloat(getComputedStyle(e).fontSize))),
@@ -87,10 +91,15 @@ async function run(){
       assert.match(copy,/Retain US breadth at its current size/);
       assert.match(copy,/1.005 with US breadth and 1.009 without it/);
       for(const label of ['8.1 basis points a year','0.58 pp','4 of 5','2 of 5','13.79 pp','3.96 pp'])assert.ok(copy.includes(label),label);
-      assert.deepEqual(await page.locator('#tabContent table').first().locator('tbody tr').allTextContents(),[
+      assert.equal(study.bands,true);assert.equal(study.marks,5);assert.equal(study.comparison,'Core + fixed 16.49% S&P 500');
+      assert.deepEqual(study.differences,[1.20,2.51,-0.80,0.45,0.98]);
+      const printed=['+1.20','+2.51','-0.80','+0.45','+0.98'];
+      assert.deepEqual(study.labels,width<600?['2019','2020','2021','2023','2024']:printed.map(s=>s+' pp'));
+      assert.deepEqual(await page.locator('#tabContent table').first().locator('tbody tr td:last-child').allTextContents(),printed);
+      assert.deepEqual(await page.locator('#tabContent table').nth(1).locator('tbody tr').allTextContents(),[
         'Core alone78.73%16.49%95.22%','Core + Crowd Sentiment90.02%5.26%95.22%']);
       assert.ok(copy.includes('5.20% request at each rebalance produced 95.16%'));
-      assert.deepEqual(study.rows,[2,5,4,2]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
+      assert.deepEqual(study.rows,[5,2,5,4,2]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
       assert.ok(study.minimum>=11);console.log('backtest',JSON.stringify(study));
       const nav=await page.locator('#tabBar').evaluate(bar=>{
         const box=bar.getBoundingClientRect(),tabs=[...bar.querySelectorAll('button')];
