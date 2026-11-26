@@ -121,3 +121,19 @@ def test_absent_position_is_zero_but_incomplete_period_is_missing():
     assert comparison_rows(a,'etf')[0]['1D']==0
     p['status']='unavailable'
     assert comparison_rows(a,'etf')[0]['1D'] is None
+
+
+def test_missing_marks_precede_rankings_and_use_starting_nav_weights():
+    r=sample([.001,0,0])
+    period=r['attribution']['periods']['1D']
+    for row, weight in zip(period['etf'], [.6,.05,.15]):
+        row['avg_weight']=weight
+        if row['contrib']==0:
+            row.update(contrib=None,coverage=0)
+    period.update(coverage=.75,status='review')
+    for body in email_digest(r):
+        assert body.index('Attribution provisional') < body.index('holding 0 (T0)')
+        assert '75.0% of held weight priced. Missing marks on 20.00% of starting NAV (T2 15.00%, T1 5.00%)' in body
+        assert 'ETF residual' in body
+    for body in email_digest(sample([.001,-.002])):
+        assert 'Attribution provisional' not in body

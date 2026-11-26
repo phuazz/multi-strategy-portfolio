@@ -147,6 +147,18 @@ def email_digest(r, preview=False):
     heading = 'Daily drivers of excess return' if bridge else 'Largest daily ETF contributions'
     body += f'<h2>{heading}</h2>'
     text.extend(['', heading])
+    coverage = period.get('coverage')
+    if period['status'] != 'unavailable' and coverage is not None and coverage < 1:
+        missing = sorted((row for row in period['etf'] if row['contrib'] is None and row['avg_weight'] > 0),
+                         key=lambda row: (-row['avg_weight'], row['ticker']))
+        notice = f'{coverage:.1%} of held weight priced.'
+        if missing:
+            missing_weight = sum(row['avg_weight'] for row in missing)
+            tickers = ', '.join(f'{row["ticker"]} {row["avg_weight"]:.2%}' for row in missing)
+            notice += f' Missing marks on {missing_weight:.2%} of starting NAV ({tickers}).'
+        body += ('<p style="margin:8px 0;padding:8px 10px;background:#fff5de;color:#634700">'
+                 '<strong>Attribution provisional</strong> · ' + escape(notice) + '</p>')
+        text.append('Attribution provisional · ' + notice)
     if selected:
         headers = ('ETF', '1D return', 'Start wt.', 'Impact') + (('Active',) if bridge else ())
         body += '<table style="width:100%;max-width:600px;border-collapse:collapse"><thead><tr>'
@@ -196,8 +208,6 @@ def email_digest(r, preview=False):
     if period['status'] == 'review':
         notes.append(f'Attribution under review. ETF residual {bp(period["etf_residual"])}, '
                      f'strategy residual {bp(period["strategy_residual"])}.')
-    if period.get('coverage') is not None and period['coverage'] < .999999:
-        notes.append(f'Price coverage {period["coverage"]:.1%}.')
     note = ' '.join(notes)
     body += '<p style="margin:8px 0;color:#525650;font-size:13px">' + escape(note) + '</p>'
     text.append(note)
