@@ -265,10 +265,16 @@ def build_benchmarks(model_dates: list[str], registry: dict,
                 al, native = observed_on_axis(native_series, idx, calendar)
                 p = _prov(t)
                 fx_info = None
+                recovered_fx = {}
                 if cfg.get("fx"):
                     fx, fx_info = observed_on_axis(raw[cfg["fx"]], idx, None)
+                    if cfg.get("historicalFxFallback") == "DEXSIUS" and cfg["fx"] == "SGDUSD=X":
+                        from sgd_fx import recover_history
+                        recovered_fx = recover_history(fx, fx_info, al)
                     al = al * fx
                     p["source"] += f" × {cfg['fx']} (yfinance; observed same-date FX)"
+                    if recovered_fx:
+                        p["source"] += f"; {len(recovered_fx)} historical FX fixing(s) from Fed H.10 at New York noon, cross-checked against ECB"
                 last = al.last_valid_index()
                 if last is None:
                     skipped.append(key)
@@ -284,6 +290,8 @@ def build_benchmarks(model_dates: list[str], registry: dict,
                 if fx_info is not None:
                     valuation.update(fxTicker=cfg["fx"], fxDates=fx_info["source_dates"],
                                      missingFxDates=fx_info["missing_dates"])
+                    if recovered_fx:
+                        valuation["recoveredFxObservations"] = recovered_fx
                 out[key] = _emit(idx, _rebase(al), last, interior_filled=0,
                                  nativePriceAsOf=native["source_dates"][last_pos],
                                  fxAsOf=fx_info["source_dates"][last_pos] if fx_info else None,
