@@ -143,10 +143,8 @@ a{color:var(--b-text);text-decoration:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 
 /* tab bar */
-.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--bd);margin-bottom:22px;overflow-x:auto;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none}
-.tab-bar::-webkit-scrollbar{display:none}
-.tab{padding:11px 18px;font-size:13.5px;font-weight:600;color:var(--t3-text);cursor:pointer;border:none;
+.tab-bar{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--bd);margin-bottom:22px}
+.tab{padding:11px 12px;font-size:13.5px;font-weight:600;color:var(--t3-text);cursor:pointer;border:none;
   background:none;position:relative;white-space:nowrap;min-height:44px;letter-spacing:0.2px}
 .tab:hover{color:var(--t1)}
 .tab.active{color:var(--t1)}
@@ -631,7 +629,7 @@ async function renderModelStudy(){
   const dates=fmtDate(b.start)+' to '+fmtDate(b.end),f=x=>num(x,2)+'%';
   const fixed=num(e.constant_request,2)+'%',both=num(b.matched_request,2)+'%';
   const names={core:'Breadth ETF core',combined:'Combined model',sentiment:'Core + Crowd Sentiment',
-    matched:'Core + fixed '+both,sentiment_matched:'Core + Crowd Sentiment + fixed '+fixed};
+    matched:'Replace both signals (+'+both+')',sentiment_matched:'Replace US breadth (+'+fixed+')'};
   const card=(title,body)=>'<section class="card"><h2 class="card-title">'+title+'</h2>'+body+'</section>';
   const note=t=>'<p class="combined-note">'+t+'</p>';
   const table=(head,rows)=>'<table class="tbl combined-table"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(v=>'<td>'+v+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
@@ -640,7 +638,12 @@ async function renderModelStudy(){
     note('<strong>Breadth ETF core.</strong> The base portfolio rotates across US sectors, asset classes, themes and European sectors.')+
     note('<strong>Crowd Sentiment.</strong> Each week it requests extra S&amp;P 500 exposure of 0%, 30% or 60% of portfolio value according to investor sentiment.')+
     note('<strong>Mid-term US breadth.</strong> When five US closes confirm a broad stock-market recovery, it requests up to 20% extra S&amp;P 500 exposure for five months. Each entry-to-exit interval is one signal period. There were '+b.events+' in this backtest. The core and Crowd Sentiment receive priority under the 145% target ceiling.'))+
-    card('Growth of 100 after modelled costs',note(dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the core with a fixed addition.')+'<div id="studyPlot"></div>'+note('Opening, month-end and final marks. The table uses every US close.'))+
+    card('Why add '+both+' or '+fixed+'?',note('The combined model averaged <strong>'+f(s.combined.mean)+' in equities</strong> from '+dates+'. To test whether timing helped, the backtest replaced the signals with a steady S&amp;P 500 allocation. It tried different sizes until the comparison portfolio averaged the same equity exposure.')+
+    table(['Starting portfolio','Average equity before','Extra requested at rebalance','Average equity after'],[
+      ['Core alone',f(s.core.mean),both,f(s.matched.mean)],['Core + Crowd Sentiment',f(s.sentiment.mean),fixed,f(s.sentiment_matched.mean)]])+
+    note('The larger addition replaces both signals. The smaller addition replaces only US breadth because Crowd Sentiment already supplies extra equity.')+
+    (e.request_check?note('Why does the second row need '+fixed+'? The gap between the two averages is '+num(s.combined.mean-s.sentiment.mean,2)+' percentage points. A '+f(e.request_check.request_pct)+' request at each rebalance produced '+f(e.request_check.mean_equity_pct)+' average equity as positions moved between rebalances. A '+fixed+' request reached '+f(s.sentiment_matched.mean)+'.'):''))
+    +card('Growth of 100 after modelled costs',note(dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the core with a steady S&amp;P 500 addition.')+'<div id="studyPlot"></div>'+note('Opening, month-end and final marks. The table uses every US close.'))+
     card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
     note('CAGR is the compounded annual growth rate. The two fixed additions were sized over the full sample to match the combined model’s average equity. All portfolios use the same funding and cost rules.'))+
     card('Where the annual return came from',table(['Strategy','Contribution to CAGR','Net gain per 100'],Object.entries(combinedNames).map(([k,name])=>[name,num(e.annual[k],2)+' pp',num(a[k],2)]).concat([['Combined model',f(s.combined.cagr),num(s.combined.end-100,2)]]))+
@@ -1276,7 +1279,7 @@ function renderAllocation(){
       ${exposureCard('By geography','expGeo')}
     </div>
     ${(DS.trades&&DS.trades.alloc_history)?`<div class="card">
-      <div class="card-h"><div class="card-title">Allocation over time</div>
+      <div class="card-h"><div class="card-title">Breadth ETF core · weekly target weights</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div class="fbtns" id="allocGroupBtns">
             <button class="fbtn ${state.allocGroup==='sleeve'?'active':''}" onclick="setAllocGroup('sleeve')">By sleeve</button>
@@ -1285,8 +1288,9 @@ function renderAllocation(){
           <div id="allocWinBtns"></div>
         </div>
       </div>
-      <div id="allocHist" class="chart" style="height:320px"></div>
-      <div class="card-note" style="margin-top:6px">Weekly target weights since inception (stacks to 100%). Watch the cash band swell in de-risk episodes and the rotation across sectors/themes. Transient names under 3% are grouped as “Other”. <strong>Click any week</strong> to see the exact portfolio on that date.</div>
+      <label id="allocPicker" hidden>Holding <select id="allocTicker" onchange="buildAllocHistory()"></select></label>
+      <div id="allocHist" class="chart" style="height:360px"></div>
+      <div class="card-note" style="margin-top:6px">Each line shows a weekly target as a percentage of the Breadth ETF core. Shared holdings are split by sleeve in the sleeve view and combined by ticker in the holding view. The de-risk line shows the allocation moved into short-term Treasuries by the risk rule. <strong>Select a week</strong> to inspect the holdings. Small historical positions are grouped under “Other”.</div>
       <div id="allocPit"></div>
     </div>`:''}
     <div class="card">
@@ -1309,11 +1313,12 @@ function _hexRgba(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>
 function buildAllocHistory(){
   const ah=DS.trades.alloc_history, el=document.getElementById('allocHist'); if(!el) return;
   const dates=ah.dates, i0=sliceWindow(dates, state.allocWin||'SI'), xd=dates.slice(i0);
-  let series=[];   // {name, color, y[]}
+  let series=[];
+  const picker=document.getElementById('allocTicker');
+  document.getElementById('allocPicker').hidden=state.allocGroup==='sleeve';
   if(state.allocGroup==='sleeve'){
-    const order=['A','B','C','D','TILT','Cash']; const sums={}; order.forEach(c=>sums[c]=new Array(dates.length).fill(0));
-    Object.keys(ah.weights).forEach(t=>{ const c=ah.ticker_sleeve[t]||'B'; const tgt=sums[c]?c:'B'; const arr=ah.weights[t]; for(let i=0;i<arr.length;i++) sums[tgt][i]+=arr[i]||0; });
-    series=order.filter(c=>sums[c].some(v=>v>1e-4)).map(c=>({name:(DS.weights.sleeve_meta[c]||{}).name||(c==='Cash'?'Cash / de-risk':c), color:SLEEVE_COLORS[c]||(c==='Cash'?'#8a8a82':'#b0b0a8'), y:sums[c].slice(i0)}));
+    if(!ah.sleeve_weights){Plotly.purge(el);el.textContent='Sleeve history is unavailable. Select By holding to see the weekly weights.';return;}
+    series=Object.entries(ah.sleeve_weights).map(([c,values])=>({name:(DS.weights.sleeve_meta[c]||{}).name||'De-risk allocation',color:SLEEVE_COLORS[c]||'#666660',dash:c==='B'?'dash':c==='TILT'?'dot':'solid',y:values.slice(i0)}));
   } else {
     const ts=ah.ticker_sleeve;
     const tickers=Object.keys(ah.weights).sort((a,b)=>{ const sa=ts[a]||'Z', sb=ts[b]||'Z'; return sa<sb?-1:sa>sb?1:(a<b?-1:1); });
@@ -1322,12 +1327,15 @@ function buildAllocHistory(){
       const alpha=grp.length>1?0.9-0.5*(j/(grp.length-1)):0.8;
       series.push({name:t, color: sl==='Cash'?'#8a8a82':_hexRgba(base,alpha), y:ah.weights[t].slice(i0)}); });
     series=series.filter(s=>s.y.some(v=>v>1e-4));
+    const selected=picker.value;
+    picker.replaceChildren(new Option('All holdings',''),...series.map(s=>new Option(s.name,s.name)));
+    if(series.some(s=>s.name===selected)){picker.value=selected;series=series.filter(s=>s.name===selected);}
   }
-  const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>(v||0)*100),
-    stackgroup:'one',line:{width:0.4,color:typeof s.color==='string'&&s.color.startsWith('rgba')?s.color:s.color},fillcolor:s.color,
-    hovertemplate:esc(s.name)+' %{y:.1f}%<extra></extra>'}));
-  plot(el,traces,baseLayout({showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.04,font:{size:11}},margin:{t:state.allocGroup==='sleeve'?24:8,b:34,l:42,r:14},
-    yaxis:{ticksuffix:'%',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'},range:[0,100]},
+  const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>v*100),
+    line:{shape:'hv',width:2,color:s.color,dash:s.dash||'solid'},
+    hovertemplate:(state.allocGroup==='holding'?'%{x|%d %b %Y}<br>':'')+esc(s.name)+' %{y:.1f}%<extra></extra>'}));
+  plot(el,traces,baseLayout({hovermode:state.allocGroup==='sleeve'?'x unified':'closest',showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.02,yanchor:'bottom',font:{size:11}},margin:{t:12,b:34,l:52,r:14},
+    yaxis:{ticksuffix:'%',rangemode:'tozero',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'}},
     xaxis:{gridcolor:'#ededea',tickfont:{size:11},range:[xd[0],xd[xd.length-1]],hoverformat:'%d %b %Y'}}));
   if(el.removeAllListeners) el.removeAllListeners('plotly_click');
   if(el.on) el.on('plotly_click', ev=>{ if(ev&&ev.points&&ev.points.length) showAllocAt(String(ev.points[0].x).slice(0,10)); });

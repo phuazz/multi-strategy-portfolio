@@ -115,6 +115,12 @@ def test_weight_history_reconstruction_and_tilt():
                     "phase22_eem_tilt": {"events": [{"date": "2026-06-01", "direction": "EM_TILT_ON"}]}}
     h2 = adapter.build_weight_history(bundle, REG, overlay_tilt)
     assert abs(h2["alloc_history"]["weights"]["EEM"][0] - (0.25 * 0.5 + 0.10)) < 1e-6   # B at 25% + 10% tilt
+    overlay_tilt["events"] = [{"date": "2026-06-05", "direction": "RISK_OFF"}]
+    bundle["thematic_rotation.json"] = _th([{"date": "2026-06-05", "holdings": [{"etf": "SPY", "weight": 1.0}]}])
+    history = adapter.build_weight_history(bundle, REG, overlay_tilt)["alloc_history"]
+    assert {k: v[0] for k, v in history["sleeve_weights"].items()} == {
+        "A": 0.175, "B": 0.125, "C": 0.05, "D": 0.10, "TILT": 0.05, "Cash": 0.50}
+    assert abs(history["weights"]["SPY"][0] - (0.25 * 0.5 + 0.10) * 0.5) < 1e-6
 
 
 def test_tilt_off_drops_eem_and_restores_b_alloc():

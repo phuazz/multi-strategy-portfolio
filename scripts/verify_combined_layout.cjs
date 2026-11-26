@@ -68,8 +68,37 @@ async function run(){
       assert.ok(study.reconciled);assert.equal(study.closes,2019);
       const copy=await page.locator('#tabContent').innerText();
       for(const label of ['8.1 basis points a year','0.58 pp','4 of 5','2 of 5','13.79 pp','3.96 pp'])assert.ok(copy.includes(label),label);
-      assert.deepEqual(study.rows,[5,4,2]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
+      assert.deepEqual(await page.locator('#tabContent table').first().locator('tbody tr').allTextContents(),[
+        'Core alone78.73%16.49%95.22%','Core + Crowd Sentiment90.02%5.26%95.22%']);
+      assert.ok(copy.includes('5.20% request at each rebalance produced 95.16%'));
+      assert.deepEqual(study.rows,[2,5,4,2]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
       assert.ok(study.minimum>=11);console.log('backtest',JSON.stringify(study));
+      const nav=await page.locator('#tabBar').evaluate(bar=>{
+        const box=bar.getBoundingClientRect(),tabs=[...bar.querySelectorAll('button')];
+        return {clipped:tabs.filter(tab=>{
+          const r=tab.getBoundingClientRect();
+          return r.left<box.left-1||r.right>box.right+1||r.bottom>box.bottom+1||tab.scrollWidth>tab.clientWidth+1;
+        }).length,rows:new Set(tabs.map(tab=>tab.offsetTop)).size};
+      });
+      assert.equal(nav.clipped,0);
+      await page.getByRole('button',{name:'Methodology',exact:true}).click();
+      assert.equal(await page.locator('.tab.active').innerText(),'Methodology');
+      await page.locator('[data-tab="allocation"]').click();
+      await page.locator('#allocHist .main-svg').first().waitFor();
+      const allocation=await page.locator('#allocHist').evaluate(el=>{
+        const h=DS.trades.alloc_history,vals=Object.values(h.sleeve_weights);
+        const raw=el.data.every((t,j)=>!t.stackgroup&&t.line.shape==='hv'&&t.x.length===h.dates.length&&t.y.every((v,i)=>v===100*vals[j][i]));
+        return {raw,sleeves:el.data.length,weeks:h.dates.length,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+      });
+      assert.ok(allocation.raw);assert.equal(allocation.sleeves,6);assert.equal(allocation.overflow,0);
+      await page.getByRole('button',{name:'By holding',exact:true}).click();
+      await page.locator('#allocTicker').selectOption('SHY');
+      await page.locator('#allocWinBtns').getByRole('button',{name:'1Y',exact:true}).click();
+      assert.ok(await page.locator('#allocHist').evaluate(el=>{
+        const t=el.data[0],h=DS.trades.alloc_history;
+        return el.data.length===1&&t.name==='SHY'&&!t.stackgroup&&t.x.length<h.dates.length&&t.y.every((v,i)=>v===100*h.weights.SHY[h.dates.indexOf(t.x[i])]);
+      }));
+      console.log('allocation/navigation',JSON.stringify({width,...allocation,...nav}));
       assert.deepEqual(errors,[]);
       console.log(JSON.stringify(metrics));
       await page.close();

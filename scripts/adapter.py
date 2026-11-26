@@ -492,14 +492,20 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
 
     weekly, prev, n_rebal = [], None, 0
     tsleeve, matrix_rows = {}, []          # ticker -> sleeve, and (date, weights) per week
+    sleeve_weights = {code: [] for code in ("A", "B", "C", "D", "TILT", "Cash")}
     for d in grid:
         ton, roff = _state(tilts, d, "EM_TILT_ON"), _state(regime, d, "RISK_OFF")
         alloc = {"A": 0.35, "B": 0.25 if ton else 0.35, "C": 0.10, "D": 0.20}
         w = {}
+        invested = 1 - derisk if roff else 1.
         for c, a in alloc.items():
-            for t, wt in _asof(c, d).items():
+            within = _asof(c, d)
+            sleeve_weights[c].append(_r(a * sum(within.values()) * invested, 6))
+            for t, wt in within.items():
                 w[t] = w.get(t, 0.0) + a * wt
                 tsleeve.setdefault(t, c)
+        sleeve_weights["TILT"].append(_r(0.10 * invested if ton else 0., 6))
+        sleeve_weights["Cash"].append(_r(derisk if roff else 0., 6))
         if ton:
             w["EEM"] = w.get("EEM", 0.0) + 0.10
         if roff:
@@ -539,6 +545,7 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
         tsl["Other"] = "Other"
     alloc_history = {
         "dates": [d for d, _ in matrix_rows],
+        "sleeve_weights": sleeve_weights,
         "weights": weights_out, "ticker_sleeve": tsl,
         "ticker_name": {t: meta.get(t, {}).get("name", t) for t in sig},
     }
