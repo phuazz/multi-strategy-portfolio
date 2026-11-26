@@ -1351,7 +1351,7 @@ function renderAllocation(){
       </div>
       <label id="allocPicker" hidden>Holding <select id="allocTicker" onchange="buildAllocHistory()"></select></label>
       <div id="allocHist" class="chart" style="height:360px"></div>
-      <div class="card-note" style="margin-top:6px">Each line shows a weekly target as a percentage of the Breadth ETF core. Shared holdings are split by sleeve in the sleeve view and combined by ticker in the holding view. The de-risk line shows the allocation moved into short-term Treasuries by the risk rule. <strong>Select a week</strong> to inspect the holdings. Small historical positions are grouped under “Other”.</div>
+      <div class="card-note" style="margin-top:6px" id="allocHistoryNote"></div>
       <div id="allocPit"></div>
     </div>`:''}
     <div class="card">
@@ -1392,10 +1392,19 @@ function buildAllocHistory(){
     picker.replaceChildren(new Option('All holdings',''),...series.map(s=>new Option(s.name,s.name)));
     if(series.some(s=>s.name===selected)){picker.value=selected;series=series.filter(s=>s.name===selected);}
   }
-  const traces=series.map(s=>({type:'scatter',mode:'lines',name:s.name,x:xd,y:s.y.map(v=>v*100),
-    line:{shape:'hv',width:2,color:s.color,dash:s.dash||'solid'},
-    hovertemplate:(state.allocGroup==='holding'?'%{x|%d %b %Y}<br>':'')+esc(s.name)+' %{y:.1f}%<extra></extra>'}));
-  plot(el,traces,baseLayout({hovermode:state.allocGroup==='sleeve'?'x unified':'closest',showlegend:state.allocGroup==='sleeve',legend:{orientation:'h',x:0,y:1.02,yanchor:'bottom',font:{size:11}},margin:{t:12,b:34,l:52,r:14},
+  const sleeves=state.allocGroup==='sleeve', stacked=sleeves||!picker.value;
+  document.getElementById('allocHistoryNote').textContent=(stacked?
+    'Band thickness shows each '+(sleeves?'sleeve’s':'holding’s')+' weekly target as a percentage of the Breadth ETF core. The top edge is their sum. '+
+    (sleeves?'Shared holdings are split by sleeve. The de-risk band is the allocation moved into short-term Treasuries.':'Select a holding to follow its weight from zero. Small historical positions are grouped under “Other”.'):
+    picker.value+' as a percentage of the Breadth ETF core each week.')+' Select a week to inspect its holdings.';
+  const traces=series.map(s=>{
+    const weights=s.y.map(v=>100*v);
+    return {type:'scatter',mode:'lines',name:s.name,x:xd,y:weights,customdata:weights,
+      ...(stacked?{stackgroup:'allocation',fillcolor:s.color}:{}),
+      line:{shape:'hv',width:stacked ? 0.55 : 2,color:stacked?'#fafaf8':s.color,simplify:false},
+      hovertemplate:(sleeves?'':'%{x|%d %b %Y}<br>')+esc(s.name)+' %{customdata:.1f}%<extra></extra>'};
+  });
+  plot(el,traces,baseLayout({hovermode:sleeves?'x unified':'closest',showlegend:sleeves,legend:{orientation:'h',x:0,y:1.02,yanchor:'bottom',itemclick:false,itemdoubleclick:false,font:{size:11}},margin:{t:12,b:34,l:52,r:14},
     yaxis:{ticksuffix:'%',rangemode:'tozero',gridcolor:'#ededea',tickfont:{size:11,family:'JetBrains Mono'}},
     xaxis:{gridcolor:'#ededea',tickfont:{size:11},range:[xd[0],xd[xd.length-1]],hoverformat:'%d %b %Y'}}));
   if(el.removeAllListeners) el.removeAllListeners('plotly_click');

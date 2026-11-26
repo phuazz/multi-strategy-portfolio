@@ -100,11 +100,12 @@ async function run(){
       await page.locator('#allocHist .main-svg').first().waitFor();
       const allocation=await page.locator('#allocHist').evaluate(el=>{
         const h=DS.trades.alloc_history,vals=Object.values(h.sleeve_weights);
-        const raw=el.data.every((t,j)=>!t.stackgroup&&t.line.shape==='hv'&&t.x.length===h.dates.length&&t.y.every((v,i)=>v===100*vals[j][i]));
+        const raw=el.data.every((t,j)=>t.stackgroup==='allocation'&&!t.groupnorm&&t.line.shape==='hv'&&t.x.length===h.dates.length&&t.y.every((v,i)=>v===100*vals[j][i]&&t.customdata[i]===v));
         return {raw,sleeves:el.data.length,weeks:h.dates.length,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
       });
       assert.ok(allocation.raw);assert.equal(allocation.sleeves,6);assert.equal(allocation.overflow,0);
       await page.getByRole('button',{name:'By holding',exact:true}).click();
+      assert.ok(await page.locator('#allocHist').evaluate(el=>el.data.length>1&&el.data.every(t=>t.stackgroup==='allocation'&&!t.groupnorm&&t.y.every((v,i)=>v===100*DS.trades.alloc_history.weights[t.name][i]))));
       await page.locator('#allocTicker').selectOption('SHY');
       await page.locator('#allocWinBtns').getByRole('button',{name:'1Y',exact:true}).click();
       assert.ok(await page.locator('#allocHist').evaluate(el=>{
