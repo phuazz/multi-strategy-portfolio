@@ -80,6 +80,8 @@ async function run(){
       assert.equal(study.lines,3);assert.equal(study.points,study.expected);assert.ok(Math.abs(study.finish-study.end)<.00001);
       assert.ok(study.reconciled);assert.equal(study.closes,2019);
       const copy=await page.locator('#tabContent').innerText();
+      assert.match(copy,/Retain US breadth at its current size/);
+      assert.match(copy,/1.005 with US breadth and 1.009 without it/);
       for(const label of ['8.1 basis points a year','0.58 pp','4 of 5','2 of 5','13.79 pp','3.96 pp'])assert.ok(copy.includes(label),label);
       assert.deepEqual(await page.locator('#tabContent table').first().locator('tbody tr').allTextContents(),[
         'Core alone78.73%16.49%95.22%','Core + Crowd Sentiment90.02%5.26%95.22%']);
@@ -97,6 +99,9 @@ async function run(){
       await page.getByRole('button',{name:'Methodology',exact:true}).click();
       assert.equal(await page.locator('.tab.active').innerText(),'Methodology');
       await page.locator('[data-tab="allocation"]').click();
+      await page.getByRole('button',{name:'Historical simulation',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('#equityExposurePlot')?.data?.[0]?.stackgroup==='combinedEquity');
+      assert.ok(await page.locator('#equityExposurePlot').evaluate(el=>el.data.length===4&&el.data.slice(0,3).every(t=>t.stackgroup==='combinedEquity'&&!t.groupnorm)&&!el.data[3].stackgroup&&Math.max(...el.data[3].y)>145&&el.layout.yaxis.range[1]>=150));
       await page.locator('#allocHist .main-svg').first().waitFor();
       const allocation=await page.locator('#allocHist').evaluate(el=>{
         const h=DS.trades.alloc_history,vals=Object.values(h.sleeve_weights);
@@ -105,6 +110,10 @@ async function run(){
       });
       assert.ok(allocation.raw);assert.equal(allocation.sleeves,6);assert.equal(allocation.overflow,0);
       await page.getByRole('button',{name:'By holding',exact:true}).click();
+      const small=await page.locator('#allocTicker option').evaluateAll(opts=>opts.find(o=>o.label.endsWith('(in Other)')).value);
+      await page.locator('#allocTicker').selectOption(small);
+      assert.ok(await page.locator('#allocHist').evaluate((el,t)=>el.data.length===1&&el.data[0].name===t&&el.data[0].y.every((v,i)=>v===100*DS.trades.alloc_history.other_holdings[t].weights[i]),small));
+      await page.locator('#allocTicker').selectOption('');
       assert.ok(await page.locator('#allocHist').evaluate(el=>el.data.length>1&&el.data.every(t=>t.stackgroup==='allocation'&&!t.groupnorm&&t.y.every((v,i)=>v===100*DS.trades.alloc_history.weights[t.name][i]))));
       await page.locator('#allocTicker').selectOption('SHY');
       await page.locator('#allocWinBtns').getByRole('button',{name:'1Y',exact:true}).click();

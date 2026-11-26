@@ -546,6 +546,9 @@ def build_weight_history(bundle, registry, overlay, *, detail_weeks=60):
     alloc_history = {
         "dates": [d for d, _ in matrix_rows],
         "sleeve_weights": sleeve_weights,
+        "other_holdings": {t: {"weights": [_r(v, 6) for v in series[t]],
+                               "name": nm(t), "sleeve": tsleeve.get(t, "B")}
+                           for t in all_t if t not in sig},
         "weights": weights_out, "ticker_sleeve": tsl,
         "ticker_name": {t: meta.get(t, {}).get("name", t) for t in sig},
     }

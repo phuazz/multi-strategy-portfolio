@@ -609,13 +609,15 @@ async function showExposure(view){
   if(!h?.date?.length){Plotly.purge(el);basis.textContent='';note.textContent='Closing exposure history is unavailable for this view.';return;}
   const n=h.date.length, peak=Math.max(...h.total),pi=h.total.indexOf(peak);
   const breaches=h.date.map((_,i)=>i).filter(i=>h.breach[i]);
-  basis.textContent=(view==='forward'?'Forward model ledger':'Historical simulation')+' · '+fmtDate(h.date[0])+(n>1?' to '+fmtDate(h.date[n-1]):'')+'. Each line shows closing equity as a percentage of combined model NAV, including equity futures. The shaded band runs from the 145% target ceiling to the 150% limit.';
+  const stacked=state.tab==='allocation'&&n>1;
+  basis.textContent=(view==='forward'?'Forward model ledger':'Historical simulation')+' · '+fmtDate(h.date[0])+(n>1?' to '+fmtDate(h.date[n-1]):'')+'. '+(stacked?'The three bands show equity held by each strategy, including futures, as a percentage of combined model NAV. The dark line is their total.':'Each strategy and the total show closing equity as a percentage of combined model NAV, including equity futures.')+' The guides mark the 145% target ceiling and the 150% limit.';
   const near=h.total.filter(v=>v>=140&&v<145).length,at=h.total.filter(v=>v>=145).length;
   note.textContent='Peak '+num(peak,2)+'% on '+fmtDate(h.date[pi])+'. '+n.toLocaleString('en-GB')+' marked '+(n===1?'close. ':'closes. ')+near+' within five points below 145%, '+at+' at or above 145%, and '+breaches.length+' above 150%.';
   const traces=Object.entries({...combinedNames,total:'Combined equity'}).map(([k,name],i)=>({
     type:'scatter',mode:n===1?'markers':'lines',name,x:h.date,y:h[k],marker:{size:8},
     line:{color:['#537ba3','#26876c','#ad661c','#20212a'][i],width:k==='total'?2.5:1.5,simplify:false,dash:k==='core'?'dot':'solid'},
-    hovertemplate:name+' %{y:.2f}%<extra></extra>'}));
+    ...(stacked&&k!=='total'?{stackgroup:'combinedEquity',fillcolor:['#aebed1','#81bcab','#e5af82'][i]}:{}),
+    customdata:h[k],hovertemplate:name+' %{customdata:.2f}%<extra></extra>'}));
   if(breaches.length){
     traces.push({type:'scatter',mode:'markers',name:'150% breach',x:breaches.map(i=>h.date[i]),y:breaches.map(i=>h.total[i]),
       marker:{color:'#b73732',symbol:'diamond-open',size:9,line:{width:2}},hoverinfo:'skip'});
@@ -633,7 +635,7 @@ async function showExposure(view){
   }
   const guide=(y,color,dash)=>({type:'line',xref:'paper',x0:0,x1:1,y0:y,y1:y,line:{color,width:1,dash}});
   const layout=baseLayout({height:410,margin:{t:16,b:88,l:46,r:60},showlegend:true,
-    legend:{orientation:'h',x:0,y:-.22,font:{size:11}},
+    legend:{orientation:'h',x:0,y:-.22,font:{size:11},...(stacked?{itemclick:false,itemdoubleclick:false}:{})},
     shapes:[{type:'rect',xref:'paper',x0:0,x1:1,y0:145,y1:150,line:{width:0},fillcolor:'rgba(186,136,56,.18)',layer:'below'},guide(145,'#986a20','dash'),guide(150,'#ad332a','dot')],
     annotations:[{y:145,text:'145% cap',yanchor:'top'},{y:150,text:'150% limit',yanchor:'bottom'}].map(a=>({...a,x:1,xref:'paper',xanchor:'left',showarrow:false,font:{size:11}})),
     xaxis:{type:'date',tickformat:n===1?'%d %b %Y':'%Y',hoverformat:'%d %b %Y',...(n===1?{tickvals:h.date}:{nticks:innerWidth<600?5:9})},
@@ -694,7 +696,10 @@ async function renderModelStudy(){
   const note=t=>'<p class="combined-note">'+t+'</p>';
   const table=(head,rows)=>'<table class="tbl combined-table"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(v=>'<td>'+v+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
   const bp=100*(s.combined.cagr-s.sentiment_matched.cagr);
-  el.innerHTML=card('How the three strategies work',
+  el.innerHTML=card('Retain US breadth at its current size',
+    note('The model accepts higher equity exposure for additional return. Across '+b.events+' signals, adding the five-month US breadth overlay to the core and Crowd Sentiment raised after-cost CAGR from '+f(s.sentiment.cagr)+' to '+f(s.combined.cagr)+'. Annual volatility rose from '+f(s.sentiment.vol)+' to '+f(s.combined.vol)+'.')+
+    note('Sharpe was '+num(s.combined.sharpe,3)+' with US breadth and '+num(s.sentiment.sharpe,3)+' without it. A steady equity addition at the same average exposure earned a Sharpe of '+num(s.sentiment_matched.sharpe,3)+'. Sharpe uses daily net returns above the Treasury-bill return, annualised on 252 sessions.'))+
+    card('How the three strategies work',
     note('<strong>Breadth ETF core.</strong> The base portfolio rotates across US sectors, asset classes, themes and European sectors.')+
     note('<strong>Crowd Sentiment.</strong> Each week it requests extra S&amp;P 500 exposure of 0%, 30% or 60% of portfolio value according to investor sentiment.')+
     note('<strong>Mid-term US breadth.</strong> When five US closes confirm a broad stock-market recovery, it requests up to 20% extra S&amp;P 500 exposure for five months. Each entry-to-exit interval is one signal period. There were '+b.events+' in this backtest. The core and Crowd Sentiment receive priority under the 145% target ceiling.'))+
@@ -1334,10 +1339,11 @@ function renderAllocation(){
   const w=DS.weights, rg=DS.regime;
   const el=document.getElementById('tabContent');
   el.innerHTML = `
+    ${exposureCardHTML(true)}
     <div class="grid3">
-      ${exposureCard('By sleeve','expSleeve')}
-      ${exposureCard('By asset class','expAsset')}
-      ${exposureCard('By geography','expGeo')}
+      ${exposureCard('Core targets by sleeve','expSleeve')}
+      ${exposureCard('Core targets by asset class','expAsset')}
+      ${exposureCard('Core targets by geography','expGeo')}
     </div>
     ${(DS.trades&&DS.trades.alloc_history)?`<div class="card">
       <div class="card-h"><div class="card-title">Breadth ETF core · weekly target weights</div>
@@ -1361,6 +1367,7 @@ function renderAllocation(){
       <div style="overflow-x:auto"><table class="tbl" id="allocTbl"></table></div>
       <div class="card-note" style="margin-top:10px">“How weight is built” = sleeve allocation × within-sleeve weight. EEM also carries the 10% EM tilt funded from sleeve B. Trade-as shows the instrument actually held (the breadth signal may be computed on a UCITS sibling).</div>
     </div>`;
+  showExposure(exposureView||(combined?.exposure?.date.length>1?'forward':'study'));
   exposureBars('expSleeve', w.by_sleeve, k=>SLEEVE_COLORS[k]||'#8a8a82', k=>(w.sleeve_meta[k]||{}).name||k);
   exposureBars('expAsset', w.by_asset_class, ()=> '#2563eb', k=>k);
   exposureBars('expGeo', w.by_geo, ()=> '#7c3aed', k=>k);
@@ -1389,14 +1396,19 @@ function buildAllocHistory(){
       series.push({name:t, color: sl==='Cash'?'#8a8a82':_hexRgba(base,alpha), y:ah.weights[t].slice(i0)}); });
     series=series.filter(s=>s.y.some(v=>v>1e-4));
     const selected=picker.value;
-    picker.replaceChildren(new Option('All holdings',''),...series.map(s=>new Option(s.name,s.name)));
-    if(series.some(s=>s.name===selected)){picker.value=selected;series=series.filter(s=>s.name===selected);}
+    const extra=Object.entries(ah.other_holdings||{}).filter(([,r])=>r.weights.slice(i0).some(v=>v>0));
+    picker.replaceChildren(new Option('All holdings',''),...series.map(s=>new Option(s.name,s.name)),...extra.map(([t])=>new Option(t+' (in Other)',t)));
+    if(extra.some(([t])=>t===selected)){
+      picker.value=selected;
+      const holding=ah.other_holdings[selected];
+      series=[{name:selected,color:SLEEVE_COLORS[holding.sleeve]||'#666660',y:holding.weights.slice(i0)}];
+    }else if(series.some(s=>s.name===selected)){picker.value=selected;series=series.filter(s=>s.name===selected);}
   }
   const sleeves=state.allocGroup==='sleeve', stacked=sleeves||!picker.value;
-  document.getElementById('allocHistoryNote').textContent=(stacked?
+  document.getElementById('allocHistoryNote').textContent=xd.length+' weekly observations, '+fmtDate(xd[0])+' to '+fmtDate(xd.at(-1))+'. '+(i0?'Select SI for all '+dates.length+' observations since inception. ':'')+(stacked?
     'Band thickness shows each '+(sleeves?'sleeve’s':'holding’s')+' weekly target as a percentage of the Breadth ETF core. The top edge is their sum. '+
     (sleeves?'Shared holdings are split by sleeve. The de-risk band is the allocation moved into short-term Treasuries.':'Select a holding to follow its weight from zero. Small historical positions are grouped under “Other”.'):
-    picker.value+' as a percentage of the Breadth ETF core each week.')+' Select a week to inspect its holdings.';
+    picker.value+' as a percentage of the Breadth ETF core each week.')+' The core allocates about 100% across equities and defensive holdings. Both overlays appear in the combined exposure chart above. Select a week to inspect its holdings.';
   const traces=series.map(s=>{
     const weights=s.y.map(v=>100*v);
     return {type:'scatter',mode:'lines',name:s.name,x:xd,y:weights,customdata:weights,
@@ -1415,8 +1427,9 @@ function showAllocAt(dateStr){
   const dates=ah.dates; let idx=dates.indexOf(dateStr);
   if(idx<0){ idx=0; for(let i=0;i<dates.length;i++){ if(dates[i]<=dateStr) idx=i; else break; } }
   const d=dates[idx];
-  const rows=Object.keys(ah.weights).map(t=>({ticker:t, w:ah.weights[t][idx]||0, sleeve:ah.ticker_sleeve[t]||'',
-    name:(ah.ticker_name||{})[t]||t})).filter(r=>r.w>1e-4).sort((a,b)=>b.w-a.w);
+  const detail=Object.entries(ah.other_holdings||{});
+  const rows=Object.keys(ah.weights).filter(t=>t!=='Other'||!detail.length).map(t=>({ticker:t, w:ah.weights[t][idx]||0, sleeve:ah.ticker_sleeve[t]||'',
+    name:(ah.ticker_name||{})[t]||t})).concat(detail.map(([t,r])=>({ticker:t,w:r.weights[idx],sleeve:r.sleeve,name:r.name}))).filter(r=>r.w>0).sort((a,b)=>b.w-a.w);
   const chip=s=> (s==='Other'||s==='Cash') ? `<span class="muted" style="font-size:11px">${esc(s)}</span>` : sleeveChip(s);
   el.innerHTML=`<div class="card-h" style="margin:16px 0 8px"><div class="card-title">Portfolio on ${fmtDate(d)}</div>
     <div class="card-note">${rows.length} holdings · <a href="#" onclick="document.getElementById('allocPit').innerHTML='';return false;">clear ✕</a></div></div>
