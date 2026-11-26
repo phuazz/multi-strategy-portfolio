@@ -230,6 +230,15 @@ a{color:var(--b-text);text-decoration:none}
 .attr-track:after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--bd-strong)}
 @media(max-width:560px){.attr-bar-row{grid-template-columns:1fr;gap:4px}.attr-table th,.attr-table td{font-size:11px;padding:9px 3px}.attr-table th:first-child,.attr-table td:first-child{width:43%}}
 
+.construction{margin-bottom:18px}
+.construction h3{margin:0 0 8px}
+.construction p{font-size:14px;line-height:1.55;max-width:62ch;margin:8px 0 14px}
+.construction summary{cursor:pointer;font-weight:600;padding:7px 0}
+.construction .stress-value{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+.construction .stress-scroll{overflow-x:auto}
+.construction td{white-space:normal;vertical-align:top}
+.construction th{white-space:normal}
+.construction details>summary:focus-visible{outline:2px solid currentColor}
 </style>
 </head>
 <body>
@@ -376,6 +385,10 @@ function refreshHealthSurfaces(){
   const h=effectiveHealth(DS);
   renderMasthead(h); renderStaleBanner(h);
   if(state.tab==='health') renderHealth(h);
+  if(state.tab==='risk'){
+    const riskHealth=document.querySelector('[data-construction-health]');
+    if(riskHealth) riskHealth.textContent=h.assessment_current?'Dataset health: '+h.level+'.':'Current freshness unverified.';
+  }
   scheduleHealthClock();
 }
 function startHealthClock(){
@@ -1542,11 +1555,59 @@ function buildAttrTable(){
 }
 
 /* ============================ placeholder tabs (filled below) ============================ */
+function constructionRisk(){
+  const risk=DS.construction_risk;
+  if(!risk || risk.status!=='shadow'){
+    return `<section class="card construction"><h3>Risk and portfolio construction</h3><p>${esc(risk?.reason || 'Shadow analysis is unavailable for this dataset vintage.')}</p></section>`;
+  }
+  if(!risk.scenarios.every(s=>s.coverage)){
+    return '<section class="card construction"><h3>Risk and portfolio construction</h3><p>This dataset predates the coverage checks. Updated diagnostics require a fresh build.</p></section>';
+  }
+  const h=risk.history, m=h.metrics||{};
+  const zeroShock=risk.scenarios.filter(s=>s.total!==null && s.coverage.shocked===0);
+  const gateLabel={RISK_ON:'open (risk-on)',RISK_OFF:'active (risk-off)'}[risk.gateState]||'unverified';
+  const indeterminate=risk.gaps.filter(g=>g.review===null).length;
+  const value=x=>isNum(x)?pct(x,2):'Unavailable';
+  const signed=x=>isNum(x)?pctSigned(x,2):'Unavailable';
+  const bucket=s=>esc(s.replaceAll('_',' ').replace(/^us /,'US ').replace(/^china /,'China '));
+  const pairs=obj=>Object.entries(obj).map(([key,v])=>bucket(key)+' '+signed(v)).join(' · ');
+  const largest=Object.entries(risk.grossByBucket).filter(([key])=>key!=='unmapped').sort((a,b)=>b[1]-a[1])[0];
+  const gapRows=risk.gaps.map(g=>`<tr><td>${esc(g.ticker)}</td><td>${value(g.weight)}</td><td>${value(g.shock)}</td><td>${value(g.loss)}</td><td>${value(g.cap)} · ${esc(g.binding||'unavailable')}</td><td>${g.review===null?'Indeterminate':g.review?'Review':'Within tested caps'}</td></tr>`).join('');
+  const proxyRows=risk.sharedProxies.map(p=>`<p data-proxy><strong>${esc(p.proxy)}</strong> · ${p.tickers.map(esc).join(' + ')} · net ${value(p.net)} of NAV · common gap ${value(p.shock)} · NAV loss ${value(p.loss)}</p>`).join('');
+  const scenarios=risk.scenarios.map(s=>{
+    const losers=s.positions.filter(p=>p.pnl<0).slice(0,2).map(p=>esc(p.ticker)+' '+signed(p.pnl)).join(', ');
+    const driver=s.driver?esc(s.driver)+' '+(s.driver==='yield (bp)'?esc(String(s.move))+' bp':signed(s.move))+'. ':'';
+    const priced=s.positions.map(p=>esc(p.ticker)+' '+signed(p.pnl)).join(' · ');
+    return `<tr><td><details><summary>${esc(s.name)}</summary><p>${driver}${esc(s.basis)}</p>
+      <p>Bucket price shocks · ${pairs(s.prices)||'None priced'}. Other covered buckets held flat.</p>
+      <p>Unpriced holdings · ${s.missing.map(esc).join(', ')||'None'}. Covered subtotal · ${signed(s.coveredPnl)} NAV.</p>
+      <p>Position contributions · ${priced||'None'}</p><p>Factor contributions · ${pairs(s.factors)||'None'}</p>
+      </details></td><td><span data-impact>${signed(s.total)}</span>${s.compareDefensiveGate?`<div>Gate ${esc(gateLabel)}</div>`:''}${s.gateComparison?`<div data-gated>Hypothetical ${pct(s.gateComparison.fraction,0)} shift to ${esc(s.gateComparison.reserve)}: ${signed(s.gateComparison.total)}</div>`:''}</td>
+      <td data-coverage>${value(s.coverage.shocked)} / ${value(s.coverage.flat)} / ${value(s.coverage.unpriced)}</td><td>${pairs(s.sleeves)||'Unavailable'}</td><td>${losers||'None priced at a loss'}</td><td>${signed(s.hedgePnl)}</td></tr>`;
+  }).join('');
+  return `<section class="card construction" id="constructionRisk"><h3>Risk and portfolio construction</h3>
+    <p>Shadow estimates for public paper weights at ${esc(risk.anchor)}. Policy v${esc(String(risk.version))}. <span data-construction-health>${esc(effectiveHealth(DS).assessment_current?"Dataset health: "+DS.health.level+".":"Current freshness unverified.")}</span></p>
+    <div class="grid2"><div><strong>Worst calculable stress</strong><div class="stress-value" data-worst>${signed(risk.worst?.total)}</div>
+    <p>${esc(risk.worst?.name||'Unavailable')} · ${risk.complete} of ${risk.scenarios.length} calculable under policy assumptions.</p>
+    <p>${zeroShock.length?esc(zeroShock.map(s=>s.name).join(' · '))+' — no held capital receives a shock.':''}</p></div>
+    <div><strong>Largest mapped capital bucket</strong><div class="stress-value">${value(largest?.[1])}</div><p>${largest?bucket(largest[0]):'Unavailable'} · gross weight / model NAV.</p></div></div>
+    <p>Gross / net invested exposure ${value(risk.gross)} / ${value(risk.net)}. Net before explicit hedges ${value(risk.preHedgeNet)}. Net equity capital ${value(risk.equityNet)}. Net equity beta and stressed margin utilisation unavailable.</p>
+    <p>Model NAV history through ${esc(h.asOf||'unknown')} · annualised volatility ${value(m.vol)}, one-day 99% historical VaR ${value(m.var99)}, 97.5% expected shortfall ${value(m.es975)}. Loss measures use ${h.observations} single-session returns.</p>
+    <details><summary>Scenario impacts and attribution</summary><p>Coverage shows gross weight as a percentage of NAV, split into shocked, assumed flat and unpriced holdings. Contributions are percentages of total NAV. Expand a scenario for shocks and coverage.</p>
+    <div class="stress-scroll"><table class="tbl"><thead><tr><th>Scenario</th><th>NAV impact</th><th>Shocked / flat / unpriced</th><th>Priced sleeve contributions</th><th>Largest priced losses</th><th>Explicit hedge P&amp;L</th></tr></thead><tbody>${scenarios}</tbody></table></div></details>
+    <details><summary>Gap sizing · ${risk.gaps.filter(g=>g.review===true).length} positions for review${indeterminate?' · '+indeterminate+' indeterminate':''}</summary><p>Adverse gap loss is weight magnitude × overnight shock. The ceiling applies the tightest configured cap. Volatility, trading liquidity and execution headroom remain unverified. Stops can fill beyond their trigger price.</p>
+    <div class="stress-scroll"><table class="tbl"><thead><tr><th>Holding</th><th>NAV weight</th><th>Gap</th><th>NAV loss</th><th>Shadow ceiling</th><th>Status</th></tr></thead><tbody>${gapRows}</tbody></table></div>
+    ${proxyRows?`<strong>Shared trade proxies</strong>${proxyRows}<p>Informational subtotal across instruments sharing the registry proxy. The per-name flag count excludes these subtotals. A common loss estimate requires the same symmetric price shock.</p>`:''}</details>
+    <details><summary>Basis and limitations</summary><p>Source: upstream effective model weights and published USD NAV. The Treasury reserve is a funded holding. Its P&amp;L follows the reconciled sleeve weights, including any allocation directly attributable to the defensive gate. Explicit hedge P&amp;L covers separately held hedges. A counterfactual without the defensive allocation needs the displaced holdings.</p>
+    <p>Historical 95% one-day VaR ${value(m.var95)}. Empirical loss quantiles and fractional-tail expected shortfall use the most recent 252 valid NYSE returns. First close ${esc(h.start||'unavailable')}, excluded gaps ${h.excluded??'unavailable'}. VaR can be exceeded. Stress shocks are illustrative and carry no probability. Estimates exclude trading costs and margin calls.</p></details></section>`;
+}
+
 function renderRisk(){
   const rg=DS.regime, et=rg.eem_tilt;
   const offT=rg.off_threshold*100, onT=rg.on_threshold*100, br=rg.breadth*100;
   const el=document.getElementById('tabContent');
   el.innerHTML = `
+    ${constructionRisk()}
     <div class="grid3">
       <div class="card">
         <div class="card-title" style="margin-bottom:14px">Breadth de-risk gate</div>

@@ -1,0 +1,30 @@
+[
+  {
+    "width": 390,
+    "scroll": 390,
+    "minFont": 11,
+    "overflow": 0,
+    "charsPerLine": 40
+  },
+  {
+    "width": 844,
+    "scroll": 844,
+    "minFont": 11,
+    "overflow": 0,
+    "charsPerLine": 74
+  },
+  {
+    "width": 768,
+    "scroll": 768,
+    "minFont": 11,
+    "overflow": 0,
+    "charsPerLine": 74
+  },
+  {
+    "width": 1280,
+    "scroll": 1280,
+    "minFont": 11,
+    "overflow": 0,
+    "charsPerLine": 74
+  }
+]

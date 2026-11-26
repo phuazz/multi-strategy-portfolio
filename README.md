@@ -33,6 +33,11 @@ cross-panel closure) each left a hardcoded copy stale on arrival. Backtest windo
 
 ## Architecture
 
+The Risk & Regime tab includes a shadow portfolio construction view for the
+public paper book. It shows scenario P&L, reconciled contributions, overnight
+gap ceilings and historical NAV tail risk. The [audit and methodology](RISK_REVIEW.md)
+document the policy, coverage gaps, reproducible replay and review sequence.
+
 This repo is a **thin, robust consumer**. It never re-runs the strategy; each day it
 fetches the engine's published outputs, normalises them into its own data contract,
 recomputes presentation-grade analytics, validates freshness, and bakes the dashboard.
