@@ -257,7 +257,12 @@ def build_benchmarks(model_dates: list[str], registry: dict,
                     skipped.append(key)
                     continue
                 calendar = cfg.get("calendar", "NYSE")
-                al, native = observed_on_axis(raw[t], idx, calendar)
+                native_series = raw[t]
+                recovered = {}
+                if t == "ES3.SI" and calendar == "XSES":
+                    from sgx_close import recover_tail
+                    native_series, recovered = recover_tail(native_series, idx[-1], _calendar(calendar))
+                al, native = observed_on_axis(native_series, idx, calendar)
                 p = _prov(t)
                 fx_info = None
                 if cfg.get("fx"):
@@ -273,6 +278,9 @@ def build_benchmarks(model_dates: list[str], registry: dict,
                              "nativePriceDates": native["source_dates"],
                              "holidayCarriedDates": native["holiday_dates"],
                              "missingNativeDates": native["missing_dates"]}
+                if recovered:
+                    valuation["recoveredNativeCloses"] = recovered
+                    p["source"] += " (missing native closes verified against SGX)"
                 if fx_info is not None:
                     valuation.update(fxTicker=cfg["fx"], fxDates=fx_info["source_dates"],
                                      missingFxDates=fx_info["missing_dates"])

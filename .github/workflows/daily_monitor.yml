@@ -29,11 +29,11 @@ name: Daily monitor refresh
 # What it does NOT do: re-run the strategy. The monitor is a read-only consumer
 # of the engine's published outputs.
 # Hourly probes close the daily-build/post-fill ordering race. They install no
-# dependencies and rebuild only when a consumed engine blob has changed.
+# dependencies. A new consumed blob or a due external benchmark retry starts a build.
 # GitHub may delay cron delivery; the sentinel enforces the separate sync budget.
 # Recovery uses these probes too. Self-dispatch chains reset their attempt count
 # on every scheduled run, so their per-chain limit did not bound stale incidents.
-# Unchanged blobs now cost one probe, with no sleeping runner or follow-up run.
+# Benchmark-only retries make one fetch and use the existing hourly trigger.
 
 on:
   schedule:
@@ -99,7 +99,12 @@ jobs:
         if: steps.source.outputs.rebuild == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/pipeline.py
+        run: |
+          if [ "${{ steps.source.outputs.benchmark_retry }}" = "true" ]; then
+            python scripts/pipeline.py --no-benchmark-wait
+          else
+            python scripts/pipeline.py
+          fi
 
       - name: Run tests
         if: steps.source.outputs.rebuild == 'true'
@@ -116,7 +121,7 @@ jobs:
         run: python scripts/check_capture_integrity.py
 
       - name: Email capture warning
-        if: steps.capture.outputs.capture_warn == 'true' && env.CATCHUP_ATTEMPT == '0'
+        if: steps.capture.outputs.capture_warn == 'true' && steps.source.outputs.benchmark_retry != 'true' && env.CATCHUP_ATTEMPT == '0'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:

@@ -31,6 +31,14 @@ fetch, current comparator marks and confirmation from the monitor that every
 warning has that cause. Required benchmark gaps, stale model inputs, inconsistent
 state, reconciliation failures and unclassified warnings still hold delivery.
 
+A missing recent Singapore comparator close is recoverable when Yahoo and SGX
+identify the same completed session and SGD price and the prior adjusted basis
+matches. The monitor archives the observation in `docs/data/sgx-observations/`
+and checks it on reuse. The existing hourly source probe also retries missing
+benchmark tails when the published engine NAV is current, at least two hours
+after the prior build and within two UTC dates of the NAV. Each such retry
+makes one benchmark fetch. An unresolved historical gap alone has no retry.
+
 ## Delivery and duplicate protection
 
 Required repository secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `MORNING_REPORT_TO`.
