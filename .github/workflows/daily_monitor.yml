@@ -118,10 +118,11 @@ jobs:
       - name: Check capture integrity
         if: steps.source.outputs.rebuild == 'true'
         id: capture
-        run: python scripts/check_capture_integrity.py
+        run: python scripts/check_capture_integrity.py --receipt-candidate "$RUNNER_TEMP/capture-warnings.json"
 
       - name: Email capture warning
-        if: steps.capture.outputs.capture_warn == 'true' && steps.source.outputs.benchmark_retry != 'true' && env.CATCHUP_ATTEMPT == '0'
+        id: capture_mail
+        if: steps.capture.outputs.capture_warn == 'true' && (steps.capture.outputs.new_history_gap == 'true' || (steps.source.outputs.benchmark_retry != 'true' && env.CATCHUP_ATTEMPT == '0'))
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -144,12 +145,16 @@ jobs:
 
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+      - name: Record delivered or resolved historical gaps
+        if: steps.source.outputs.rebuild == 'true' && (steps.capture.outputs.capture_warn == 'false' || steps.capture_mail.outcome == 'success')
+        run: cp "$RUNNER_TEMP/capture-warnings.json" ops/capture_warnings.json
+
       - name: Commit refreshed output
         if: steps.source.outputs.rebuild == 'true'
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "Multi-Strategy Monitor Bot"
-          git add docs/
+          git add docs/ ops/capture_warnings.json
           if git diff --cached --quiet; then
             exit 0
           fi

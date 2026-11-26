@@ -121,6 +121,7 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
     bench_budget = fb.get("benchmark_sessions", 1)
     benchmark_feeds = []
     ancillary_gaps = []
+    historical_gaps = []
     for key, cfg in registry.get("benchmarks", {}).items():
         bm = (benchmarks or {}).get(key) or {}
         asof = bm.get("asOf")
@@ -155,6 +156,10 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
                 if (key not in MORNING_BENCHMARKS and asof == price_asof
                         and bm.get("equity") and gaps[-1] < price_asof):
                     ancillary_gaps.append(f["feed"])
+                    for leg, dates, ticker in (
+                            ("price", valuation.get("missingNativeDates", []), cfg["ticker"]),
+                            ("FX", valuation.get("missingFxDates", []), cfg.get("fx"))):
+                        historical_gaps.extend(f"{key} {leg} {ticker} {day}" for day in dates)
                 f["level"] = "warn"
         benchmark_feeds.append(f)
     # Certify the exception only when the whole benchmark fetch succeeded and
@@ -258,7 +263,8 @@ def run(bundle: dict, registry: dict, run_date: dt.date, stats: dict,
         "consistency_ok": consistency_ok,
         "reconcile_ok": bool(reconcile.get("ok", True)),
         "benchmark_ok": bool(bench_ok),
-        **({"dashboard_only_history_warnings": ancillary_gaps}
+        **({"dashboard_only_history_warnings": ancillary_gaps,
+            "dashboard_only_history_gaps": sorted(set(historical_gaps))}
            if only_ancillary_gaps and consistency_ok and reconcile.get("ok") is True else {}),
         "messages": messages,
         "source_commit": bundle.get("source_commit"),
