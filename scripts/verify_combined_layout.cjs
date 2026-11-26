@@ -65,7 +65,11 @@ async function run(){
         const gap=document.querySelector('#gapStudyPlot').data.find(trace=>trace.name==='Drawdown gap');
         const reconciled=daily.dates.every((day,i)=>{
           const sentiment=daily.sentiment[i],breadth=daily.thrust[i];
-          return areas[4].x[i]===day && areas[4].y[i]===sentiment+breadth &&
+          const curve=b.curve,keys=['combined','sentiment','matched','core'];
+          const equity=keys.every((k,j)=>p.data[j].x[i]===day&&p.data[j].y[i]===curve[k][i]);
+          return equity&&p.data[1].visible===true&&p.data[1].name==='Core + Crowd Sentiment'&&
+            p.data[4].yaxis==='y2'&&Math.abs(p.data[4].y[i]-100*(curve.combined[i]/curve.sentiment[i]-1))<1e-10&&
+            areas[4].x[i]===day && areas[4].y[i]===sentiment+breadth &&
             areas[0].y[i]+areas[2].y[i]===sentiment && areas[1].y[i]+areas[3].y[i]===breadth &&
             gap.x[i]===day && gap.y[i]===daily.gap[i];
         });
@@ -77,7 +81,7 @@ async function run(){
           minimum:Math.min(...els.map(e=>parseFloat(getComputedStyle(e).fontSize))),
           chars:Math.round(prose.clientWidth*62/ctx.measureText('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789').width)};
       });
-      assert.equal(study.lines,3);assert.equal(study.points,study.expected);assert.ok(Math.abs(study.finish-study.end)<.00001);
+      assert.equal(study.lines,5);assert.equal(study.points,2019);assert.equal(study.points,study.expected);assert.ok(Math.abs(study.finish-study.end)<.00001);
       assert.ok(study.reconciled);assert.equal(study.closes,2019);
       const copy=await page.locator('#tabContent').innerText();
       assert.match(copy,/Retain US breadth at its current size/);

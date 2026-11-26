@@ -687,7 +687,7 @@ async function renderModelStudy(){
     if(state.tab!=='backtest')return;
   }
   const b=combinedStudy,s=b.stats,a=b.attribution,e=b.exhibit;
-  if(!e){el.textContent='The revised backtest data is loading. Refresh the page to load the current exhibit.';return;}
+  if(!e||!b.curve?.sentiment){el.textContent='The historical comparison is unavailable in this data version. Refresh the page to load the current exhibit.';return;}
   const dates=fmtDate(b.start)+' to '+fmtDate(b.end),f=x=>num(x,2)+'%';
   const fixed=num(e.constant_request,2)+'%',both=num(b.matched_request,2)+'%';
   const names={core:'Breadth ETF core',combined:'Combined model',sentiment:'Core + Crowd Sentiment',
@@ -703,13 +703,15 @@ async function renderModelStudy(){
     note('<strong>Breadth ETF core.</strong> The base portfolio rotates across US sectors, asset classes, themes and European sectors.')+
     note('<strong>Crowd Sentiment.</strong> Each week it requests extra S&amp;P 500 exposure of 0%, 30% or 60% of portfolio value according to investor sentiment.')+
     note('<strong>Mid-term US breadth.</strong> When five US closes confirm a broad stock-market recovery, it requests up to 20% extra S&amp;P 500 exposure for five months. Each entry-to-exit interval is one signal period. There were '+b.events+' in this backtest. The core and Crowd Sentiment receive priority under the 145% target ceiling.'))+
+    card('Growth of 100 with and without US breadth',note(dates+' · daily closing values after trading and funding costs. Both portfolios hold the core and follow Crowd Sentiment. The combined model also uses US breadth.')+
+    '<div id="studyPlot" aria-label="Growth of 100 and the combined model’s percentage lead over core plus Crowd Sentiment"></div>'+
+    note('The lower line rises when US breadth adds relative wealth and falls when it gives some back. The combined model finished at '+num(s.combined.end,2)+' versus '+num(s.sentiment.end,2)+' without US breadth, a '+f(100*(s.combined.end/s.sentiment.end-1))+' cumulative lead. Select either greyed-out legend entry to add a reference portfolio.'))+
     card('Why add '+both+' or '+fixed+'?',note('The combined model averaged <strong>'+f(s.combined.mean)+' in equities</strong> from '+dates+'. To test whether timing helped, the backtest replaced the signals with a steady S&amp;P 500 allocation. It tried different sizes until the comparison portfolio averaged the same equity exposure.')+
     table(['Starting portfolio','Average equity before','Extra requested at rebalance','Average equity after'],[
       ['Core alone',f(s.core.mean),both,f(s.matched.mean)],['Core + Crowd Sentiment',f(s.sentiment.mean),fixed,f(s.sentiment_matched.mean)]])+
     note('The larger addition replaces both signals. The smaller addition replaces only US breadth because Crowd Sentiment already supplies extra equity.')+
     (e.request_check?note('Why does the second row need '+fixed+'? The gap between the two averages is '+num(s.combined.mean-s.sentiment.mean,2)+' percentage points. A '+f(e.request_check.request_pct)+' request at each rebalance produced '+f(e.request_check.mean_equity_pct)+' average equity as positions moved between rebalances. A '+fixed+' request reached '+f(s.sentiment_matched.mean)+'.'):''))
-    +card('Growth of 100 after modelled costs',note(dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the core with a steady S&amp;P 500 addition.')+'<div id="studyPlot"></div>'+note('Opening, month-end and final marks. The table uses every US close.'))+
-    exposureCardHTML(false)+card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
+    +exposureCardHTML(false)+card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
     note('CAGR is the compounded annual growth rate. The two fixed additions were sized over the full sample to match the combined model’s average equity. All portfolios use the same funding and cost rules.'))+
     card('Where the annual return came from',table(['Strategy','Contribution to CAGR','Net gain per 100'],Object.entries(combinedNames).map(([k,name])=>[name,num(e.annual[k],2)+' pp',num(a[k],2)]).concat([['Combined model',f(s.combined.cagr),num(s.combined.end-100,2)]]))+
     note('Daily net strategy returns are linked through time. The contributions add to portfolio CAGR before rounding. The last column shows cumulative profit per 100 of starting capital.'))+
@@ -725,9 +727,16 @@ async function renderModelStudy(){
     note('The drawdowns were within half a percentage point on '+num(e.within_half,1)+'% of '+e.n.toLocaleString('en-US')+' closes.')+
     table(['Largest gaps','With US breadth','With fixed addition','Gap (pp)'],e.drawdown_extremes.map(r=>[fmtDate(r.date),f(r.timed),f(r.constant),(r.gap>0?'+':'')+num(r.gap,2)])))+
     card('Basis of comparison',note('Official Breadth ETF core NAV, reconstructed holdings, public Crowd Sentiment and the five-month US breadth rule. Incremental trades cost 10 bp one way. Futures financing uses the Treasury bill return plus 50 bp annually. The last core and bill marks carried forward on '+b.core_carry+' US sessions. The simulation precedes the forward combined account.'));
-  const traces=[['combined','#176c53','solid'],['matched','#a35c16','dash'],['core','#344968','solid']].map(([k,c,d])=>({x:b.curve.dates,y:b.curve[k],name:names[k],mode:'lines',line:{color:c,width:2.3,dash:d},hovertemplate:'%{y:.2f}<extra>%{fullData.name}</extra>'}));
+  const traces=[['combined','#176c53','solid'],['sentiment','#25476b','dash'],['matched','#a35c16','dash'],['core','#73777b','dot']].map(([k,c,d],i)=>({x:b.curve.dates,y:b.curve[k],name:names[k],mode:'lines',visible:i<2?true:'legendonly',line:{color:c,width:i===0?2.3:1.6,dash:d,simplify:false},hovertemplate:'%{y:.2f}<extra>%{fullData.name}</extra>'}));
+  traces.push({name:'Relative lead',x:b.curve.dates,y:b.curve.combined.map((v,i)=>100*(v/b.curve.sentiment[i]-1)),yaxis:'y2',showlegend:false,mode:'lines',line:{color:'#25476b',width:1.5,simplify:false},hovertemplate:'Relative lead %{y:+.2f}%<extra></extra>'});
   const layout=title=>baseLayout({height:365,margin:{t:20,b:90,l:60,r:12},showlegend:true,legend:{orientation:'h',x:0,y:-.2,font:{size:11}},xaxis:{type:'date',tickformat:'%Y',hoverformat:'%d %b %Y',nticks:innerWidth<600?5:9},yaxis:{title,gridcolor:'#ededea',zerolinecolor:'#6e7882'}});
-  Plotly.newPlot('studyPlot',traces,layout('NAV · start 100'),PLOT_CFG);
+  const growthLayout=layout('NAV · start 100');
+  growthLayout.height=innerWidth<600?500:470;
+  growthLayout.yaxis.domain=[.36,1];
+  growthLayout.yaxis2={domain:[0,.25],title:'Lead (%)',ticksuffix:'%',nticks:4,gridcolor:'#ededea',zerolinecolor:'#6e7882'};
+  growthLayout.xaxis.anchor='y2';
+  growthLayout.legend.y=-.15;
+  Plotly.newPlot('studyPlot',traces,growthLayout,PLOT_CFG);
   const daily=e.daily,areas=[];
   for(const sign of [1,-1]){
     for(const [key,label,col] of [['sentiment','Crowd Sentiment','#91c4b8'],['thrust','US breadth','#db9c68']]){
