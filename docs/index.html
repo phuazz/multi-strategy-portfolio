@@ -277,8 +277,9 @@ a{color:var(--b-text);text-decoration:none}
 const DATA_FILE = 'data/portfolio-multi-strategy-portfolio.json';
 let DS = null;
 let combined = null;
+let combinedStudy=null,studyLoading=false;
 let combinedExpiryTimer;
-const state = { tab:'combined', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
+const state = { tab:location.hash==='#backtest'?'backtest':'combined', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
 const WIN_OV=['1W','1M','3M','6M','YTD','1Y','SI'], WIN_PERF=['1W','1M','3M','6M','YTD','1Y','3Y','SI'], WIN_RISK=['1W','1M','6M','YTD','1Y','3Y','SI'];
 let _blotter=[], _actions=[];   // Trades-tab filterable rows
@@ -290,7 +291,7 @@ let _blotter=[], _actions=[];   // Trades-tab filterable rows
    already on the Overview headline and masthead pill, so its detail is
    reference material rather than a first question. */
 const TABS = [
-  ['combined','Combined model'], ['overview','Core overview'], ['allocation','Allocation'], ['trades','Trades'], ['attribution','Core attribution'], ['performance','Performance'],
+  ['combined','Combined model'], ['backtest','Model backtest'], ['overview','Core overview'], ['allocation','Allocation'], ['trades','Trades'], ['attribution','Core attribution'], ['performance','Performance'],
   ['risk','Risk & Regime'], ['signals','Signals'], ['health','Data Health'], ['method','Methodology'],
 ];
 const SLEEVE_COLORS = {A:'#2563eb',B:'#1a8754',C:'#b45309',D:'#7c3aed',TILT:'#0891b2',CASH:'#8a8a82'};
@@ -422,10 +423,10 @@ function startHealthClock(){
 /* ============================ masthead / KPIs ============================ */
 function renderMasthead(h=effectiveHealth(DS)){
   const m=DS.meta, rg=DS.regime;
-  if(state.tab==='combined'){
+  if(state.tab==='combined'||state.tab==='backtest'){
     document.getElementById('mhTitle').textContent='Multi-Strategy Portfolio';
     document.getElementById('mhSub').textContent='Breadth ETF core · Crowd Sentiment · Mid-term US breadth';
-    document.getElementById('mhRight').innerHTML='<span class="pill pill-paper">Combined model</span>';
+    document.getElementById('mhRight').innerHTML='<span class="pill pill-paper">'+(state.tab==='backtest'?'Historical simulation':'Combined model')+'</span>';
     return;
   }
   document.getElementById('mhTitle').textContent = m.name;
@@ -613,6 +614,32 @@ function renderCombined(){
     '<section class="card"><h2 class="card-title">Contribution to combined return</h2>'+table(['Last session (pp)','Since inception (pp)'],r=>'<td class="'+signClass(r.daily_pp)+'">'+pp(r.daily_pp)+'</td><td class="'+signClass(r.inception_pp)+'">'+pp(r.inception_pp)+'</td>')+
     '<p class="combined-note">'+(totals.daily_pp==null?'Opening allocation. Return attribution begins after the next verified close. ':'')+'Daily and cumulative contributions include trading and financing costs. Source: combined model ledger, '+fmtDate(m.as_of)+'. Inception '+fmtDate(m.inception)+'.</p></section>'+links;
 }
+async function renderModelStudy(){
+  const el=document.getElementById('tabContent');
+  if(!combinedStudy){
+    el.textContent='Loading historical model results…';
+    if(studyLoading)return;
+    studyLoading=true;
+    try{const r=await fetch('data/combined-backtest.json',{cache:'no-cache'});
+      if(!r.ok)throw Error();combinedStudy=await r.json();}
+    catch(e){if(state.tab==='backtest')el.textContent='Historical model results are unavailable.';return;}
+    finally{studyLoading=false;}
+    if(state.tab!=='backtest')return;
+  }
+  const b=combinedStudy,s=b.stats,a=b.attribution,names={combined:'Combined model',core:'Breadth ETF core',matched:'Core + constant overlay',sentiment:'Core + Crowd Sentiment',sentiment_matched:'Core + sentiment + constant breadth substitute'};
+  const dates=fmtDate(b.start)+' to '+fmtDate(b.end),f=x=>num(x,2)+'%';
+  const rows=['combined','core','matched','sentiment','sentiment_matched'].map(k=>'<tr><td>'+names[k]+'</td><td>'+f(s[k].cagr)+'</td><td>'+f(s[k].mean)+'</td><td>'+f(s[k].dd)+'</td></tr>').join('');
+  el.innerHTML='<section class="card"><h2 class="card-title">Growth of 100 after modelled costs</h2><p class="combined-note">'+dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the constant overlay.</p><div id="studyPlot" aria-label="Growth of 100 for combined model, core and exposure-matched control"></div><p class="combined-note">Opening, month-end and final marks. The comparison table uses every US session.</p></section>'+
+    '<section class="card"><h2 class="card-title">Return and equity exposure</h2><table class="tbl combined-table"><thead><tr><th>Portfolio</th><th>Net CAGR</th><th>Average equity</th><th>Max drawdown</th></tr></thead><tbody>'+rows+'</tbody></table><p class="combined-note">The constant overlay requests '+num(b.matched_request,2)+'% of NAV. Both controls use the same funding, trading costs, reset dates and risk limits as the combined book. Constant sizes were fitted over the full sample.</p></section>'+
+    '<section class="card"><h2 class="card-title">Contribution to cumulative portfolio return</h2><table class="tbl combined-table"><thead><tr><th>Strategy</th><th>Return contribution (pp)</th></tr></thead><tbody>'+Object.entries(combinedNames).map(([k,name])=>'<tr><td>'+name+'</td><td>'+num(a[k],2)+'</td></tr>').join('')+'<tr><td>Combined return</td><td>'+num(s.combined.end-100,2)+'</td></tr></tbody></table><p class="combined-note">Net profit per 100 of starting capital. The core also earns returns on reinvested overlay profits. Holding sentiment active and matching average equity, breadth timing added '+num(100*(s.combined.cagr-s.sentiment_matched.cagr),1)+' basis points annually across '+b.events+' breadth episodes.</p></section>'+
+    '<section class="card"><h2 class="card-title">Basis of comparison</h2><p class="combined-note">Official Breadth ETF core NAV, reconstructed historical core holdings, the published weekly Crowd Sentiment series and the five-month US breadth rule. Core NAV carries its published cost assumptions. Overlay trades cost 10 bp one way. Futures financing uses the Treasury bill return plus 50 bp annually. Core and bill marks carry forward on '+b.core_carry+' US sessions without a published mark. This simulation precedes the forward combined account.</p></section>';
+  const evidence=document.createElement('p');
+  evidence.className='combined-note';
+  evidence.textContent='Against the same full-period breadth substitute, the annual advantage was '+num(b.breadth_split_bp[0],1)+' bp in the first half and '+num(b.breadth_split_bp[1],1)+' bp in the second, split at '+fmtDate(b.midpoint)+'. The five episodes were previously studied.';
+  el.querySelectorAll('section')[2].append(evidence);
+  const traces=[['combined','#176c53','solid'],['matched','#a35c16','dash'],['core','#344968','solid']].map(([k,c,d])=>({x:b.curve.dates,y:b.curve[k],name:names[k],mode:'lines',line:{color:c,width:2.3,dash:d},hovertemplate:'%{y:.2f}<extra>%{fullData.name}</extra>'}));
+  Plotly.newPlot('studyPlot',traces,baseLayout({height:365,margin:{t:12,b:92,l:53,r:12},showlegend:true,legend:{orientation:'h',x:0,y:-.19,font:{size:11}},xaxis:{type:'date',tickformat:'%Y',nticks:innerWidth<600?5:9},yaxis:{title:'NAV · start 100',gridcolor:'#ededea'}}),PLOT_CFG);
+}
 function renderTabBar(){
   document.getElementById('tabBar').innerHTML = TABS.map(([k,label])=>
     `<button class="tab ${state.tab===k?'active':''}" data-tab="${k}">${label}</button>`).join('');
@@ -620,10 +647,10 @@ function renderTabBar(){
 }
 function setTab(k){ state.tab=k; renderTabBar(); renderTab(); window.scrollTo({top:0,behavior:'smooth'}); }
 function renderTab(){
-  document.body.classList.toggle('combined-view',state.tab==='combined');
+  document.body.classList.toggle('combined-view',state.tab==='combined'||state.tab==='backtest');
   if(DS)renderMasthead();
-  if(!DS && state.tab!=='combined'){document.getElementById('tabContent').textContent='The Breadth ETF core dataset is unavailable.';return;}
-  const fn = ({combined:renderCombined, overview:renderOverview, allocation:renderAllocation, performance:renderPerformance,
+  if(!DS && !['combined','backtest'].includes(state.tab)){document.getElementById('tabContent').textContent='The Breadth ETF core dataset is unavailable.';return;}
+  const fn = ({combined:renderCombined, backtest:renderModelStudy, overview:renderOverview, allocation:renderAllocation, performance:renderPerformance,
     attribution:renderAttribution, risk:renderRisk, signals:renderSignals, health:renderHealth,
     method:renderMethod, trades:renderTrades})[state.tab] || (()=>'');
   document.getElementById('tabContent').innerHTML = '<div></div>';

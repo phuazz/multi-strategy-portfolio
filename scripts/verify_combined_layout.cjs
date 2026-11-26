@@ -5,6 +5,7 @@ const http=require('node:http');
 const path=require('node:path');
 const root=path.resolve(__dirname,'../docs');
 const files={'/':'index.html','/data/combined-model.json':'data/combined-model.json',
+  '/data/combined-backtest.json':'data/combined-backtest.json',
   '/data/portfolio-multi-strategy-portfolio.json':'data/portfolio-multi-strategy-portfolio.json'};
 const server=http.createServer((req,res)=>{
   const file=files[req.url];
@@ -41,6 +42,23 @@ async function run(){
       await page.locator('[data-tab="combined"]').click();
       await page.evaluate(()=>{combined.expires_utc='2000-01-01T00:00:00Z';renderCombined();});
       assert.match(await page.locator('#tabContent').innerText(),/Historical snapshot/);
+      await page.locator('[data-tab="backtest"]').click();
+      await page.locator('#studyPlot .main-svg').first().waitFor();
+      const study=await page.evaluate(()=>{
+        const p=document.querySelector('#studyPlot'),b=combinedStudy,w=document.documentElement.clientWidth;
+        const tables=[...document.querySelectorAll('#tabContent table')];
+        const els=[...document.querySelectorAll('#tabContent p,#tabContent td,#tabContent th,#tabContent h2,#studyPlot')];
+        const prose=els.find(e=>e.tagName==='P'&&e.textContent.length>110);
+        const ctx=document.createElement('canvas').getContext('2d');ctx.font=getComputedStyle(prose).font;
+        return {lines:p.data.length,points:p.data[0].x.length,expected:b.curve.dates.length,
+          finish:p.data[0].y.at(-1),end:b.stats.combined.end,rows:tables.map(t=>t.tBodies[0].rows.length),
+          width:w,extra:document.documentElement.scrollWidth-w,over:els.filter(e=>e.getBoundingClientRect().right>w+1).length,
+          minimum:Math.min(...els.map(e=>parseFloat(getComputedStyle(e).fontSize))),
+          chars:Math.round(prose.clientWidth*62/ctx.measureText('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789').width)};
+      });
+      assert.equal(study.lines,3);assert.equal(study.points,study.expected);assert.ok(Math.abs(study.finish-study.end)<.00001);
+      assert.deepEqual(study.rows,[5,4]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
+      assert.ok(study.minimum>=11);console.log('backtest',JSON.stringify(study));
       assert.deepEqual(errors,[]);
       console.log(JSON.stringify(metrics));
       await page.close();

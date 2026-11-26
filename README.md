@@ -1,5 +1,7 @@
 # Multi-Strategy Portfolio — Model Portfolio Monitor
 
+The [Model backtest](https://phuazz.github.io/multi-strategy-portfolio/#backtest) compares the three-strategy model with the published Breadth ETF core and constant overlays fitted to equal average equity exposure. The dated research exhibit reads aggregate results from `docs/data/combined-backtest.json`. The forward combined ledger has a separate inception.
+
 The landing view reports the combined model equity target, marked equity and net contributions from the Breadth ETF core, Crowd Sentiment and mid-term US breadth. The core tabs retain their standalone history, holdings and attribution. The private post-close process updates only `docs/data/combined-model.json` after reconciling the three contributions to portfolio NAV. The last verified close stays visible with a historical label if the next close has passed or the core and combined dates differ.
 
 
