@@ -3,6 +3,26 @@
   "as_of": "2026-11-25",
   "next_close": "2026-11-27",
   "inception": "2026-11-25",
+  "exposure": {
+    "date": [
+      "2026-11-25"
+    ],
+    "core": [
+      54.8763631
+    ],
+    "sentiment": [
+      30.0
+    ],
+    "thrust": [
+      0.0
+    ],
+    "total": [
+      84.8763631
+    ],
+    "breach": [
+      false
+    ]
+  },
   "expires_utc": "2026-11-27T18:00:00+00:00",
   "action": "carry",
   "trim_pct": 0.0,

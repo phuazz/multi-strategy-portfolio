@@ -24,8 +24,21 @@ async function run(){
       await page.goto(process.argv[2]||'http://127.0.0.1:'+server.address().port+'/',{waitUntil:'domcontentloaded'});
       await page.locator('.combined-value').first().waitFor();
       await page.evaluate(()=>document.fonts.ready);
+      await page.getByRole('button',{name:'Historical simulation',exact:true}).click();
+      await page.locator('#equityExposurePlot .main-svg').first().waitFor();
+      const riskHistory=await page.locator('#equityExposurePlot').evaluate(el=>{
+        const h=combinedStudy.exhibit.exposure;
+        return ['core','sentiment','thrust','total'].every((k,j)=>el.data[j].y.every((v,i)=>v===h[k][i]&&el.data[j].x[i]===h.date[i]))&&
+          h.date.length===2019&&h.total.every((v,i)=>Math.abs(v-h.core[i]-h.sentiment[i]-h.thrust[i])<1e-6)&&
+          el.layout.shapes.some(s=>s.y0===145&&s.y1===145)&&el.layout.shapes.some(s=>s.y0===150&&s.y1===150);
+      });
+      assert.ok(riskHistory);
+      assert.match(await page.locator('#exposureSummary').innerText(),/148.37%.*15 at or above 145%, and 0 above 150%/);
+      assert.equal(await page.locator('#breachDates li').count(),47);
+      await page.getByRole('button',{name:'Forward model',exact:true}).click();
+      assert.ok(await page.locator('#equityExposurePlot').evaluate(el=>el.data[3].x.at(-1)===combined.as_of&&Math.abs(el.data[3].y.at(-1)-combined.equity_pct)<1e-6));
       const metrics=await page.evaluate(()=>{
-        const els=[...document.querySelectorAll('#tabContent *')],w=document.documentElement.clientWidth;
+        const els=[...document.querySelectorAll('#tabContent *')].filter(e=>!e.closest('.js-plotly-plot')||e.matches('.js-plotly-plot,.xtick text,.ytick text,.legendtext,.annotation-text')),w=document.documentElement.clientWidth;
         const t=els.filter(e=>[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()));
         const p=document.querySelectorAll('.combined-note')[2],ctx=document.createElement('canvas').getContext('2d');
         ctx.font=getComputedStyle(p).font;

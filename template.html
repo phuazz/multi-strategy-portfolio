@@ -275,7 +275,7 @@ a{color:var(--b-text);text-decoration:none}
 const DATA_FILE = 'data/portfolio-multi-strategy-portfolio.json';
 let DS = null;
 let combined = null;
-let combinedStudy=null,studyLoading=false;
+let combinedStudy=null,studyLoading=null,exposureView=null;
 let combinedExpiryTimer;
 const state = { tab:location.hash==='#backtest'?'backtest':'combined', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
@@ -577,6 +577,69 @@ function renderStaleBanner(h=effectiveHealth(DS)){
 
 /* ============================ tab nav ============================ */
 const combinedNames={core:'Breadth ETF core',sentiment:'Crowd Sentiment',thrust:'Mid-term US breadth'};
+async function getModelStudy(){
+  if(combinedStudy)return combinedStudy;
+  if(!studyLoading)studyLoading=fetch('data/combined-backtest.json',{cache:'no-cache'}).then(r=>{
+    if(!r.ok)throw Error('Backtest unavailable');
+    return r.json();
+  }).then(data=>combinedStudy=data).finally(()=>{studyLoading=null;});
+  return studyLoading;
+}
+function exposureCardHTML(allowSwitch){
+  const controls=allowSwitch?'<div class="fbtns" id="exposureViews"><button class="fbtn" data-view="study">Historical simulation</button><button class="fbtn" data-view="forward">Forward model</button></div>':'';
+  return '<section class="card"><h2 class="card-title">Combined equity exposure over time</h2>'+controls+
+    '<p class="combined-note" id="exposureBasis"></p><div id="equityExposurePlot"></div><p class="combined-note" id="exposureSummary" aria-live="polite"></p><div id="breachDates"></div></section>';
+}
+async function showExposure(view){
+  const el=document.getElementById('equityExposurePlot');
+  if(!el)return;
+  el.dataset.view=view;
+  const controls=document.getElementById('exposureViews');
+  if(controls)for(const button of controls.querySelectorAll('button')){
+    const active=button.dataset.view===view;
+    button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+    button.onclick=()=>{exposureView=button.dataset.view;showExposure(exposureView);};
+  }
+  const note=document.getElementById('exposureSummary');
+  let h;
+  try{h=view==='forward'?combined?.exposure:(await getModelStudy()).exhibit?.exposure;}catch{h=null;}
+  if(!el.isConnected||el.dataset.view!==view)return;
+  const basis=document.getElementById('exposureBasis'),detail=document.getElementById('breachDates');
+  detail.replaceChildren();
+  if(!h?.date?.length){Plotly.purge(el);basis.textContent='';note.textContent='Closing exposure history is unavailable for this view.';return;}
+  const n=h.date.length, peak=Math.max(...h.total),pi=h.total.indexOf(peak);
+  const breaches=h.date.map((_,i)=>i).filter(i=>h.breach[i]);
+  basis.textContent=(view==='forward'?'Forward model ledger':'Historical simulation')+' · '+fmtDate(h.date[0])+(n>1?' to '+fmtDate(h.date[n-1]):'')+'. Each line shows closing equity as a percentage of combined model NAV, including equity futures. The shaded band runs from the 145% target ceiling to the 150% limit.';
+  const near=h.total.filter(v=>v>=140&&v<145).length,at=h.total.filter(v=>v>=145).length;
+  note.textContent='Peak '+num(peak,2)+'% on '+fmtDate(h.date[pi])+'. '+n.toLocaleString('en-GB')+' marked '+(n===1?'close. ':'closes. ')+near+' within five points below 145%, '+at+' at or above 145%, and '+breaches.length+' above 150%.';
+  const traces=Object.entries({...combinedNames,total:'Combined equity'}).map(([k,name],i)=>({
+    type:'scatter',mode:n===1?'markers':'lines',name,x:h.date,y:h[k],marker:{size:8},
+    line:{color:['#537ba3','#26876c','#ad661c','#20212a'][i],width:k==='total'?2.5:1.5,simplify:false,dash:k==='core'?'dot':'solid'},
+    hovertemplate:name+' %{y:.2f}%<extra></extra>'}));
+  if(breaches.length){
+    traces.push({type:'scatter',mode:'markers',name:'150% breach',x:breaches.map(i=>h.date[i]),y:breaches.map(i=>h.total[i]),
+      marker:{color:'#b73732',symbol:'diamond-open',size:9,line:{width:2}},hoverinfo:'skip'});
+  }
+  if(near+at){
+    const list=document.createElement('details'),label=document.createElement('summary');
+    label.textContent='Inspect closes at or above 140% ('+(near+at)+')';list.append(label);
+    const items=document.createElement('ul');
+    h.date.forEach((d,i)=>{
+      if(h.total[i]<140)return;
+      const item=document.createElement('li');item.textContent=fmtDate(d)+' · '+num(h.total[i],2)+'%'+(h.breach[i]?' · limit breached':'');
+      items.append(item);
+    });
+    list.append(items);detail.append(list);
+  }
+  const guide=(y,color,dash)=>({type:'line',xref:'paper',x0:0,x1:1,y0:y,y1:y,line:{color,width:1,dash}});
+  const layout=baseLayout({height:410,margin:{t:16,b:88,l:46,r:60},showlegend:true,
+    legend:{orientation:'h',x:0,y:-.22,font:{size:11}},
+    shapes:[{type:'rect',xref:'paper',x0:0,x1:1,y0:145,y1:150,line:{width:0},fillcolor:'rgba(186,136,56,.18)',layer:'below'},guide(145,'#986a20','dash'),guide(150,'#ad332a','dot')],
+    annotations:[{y:145,text:'145% cap',yanchor:'top'},{y:150,text:'150% limit',yanchor:'bottom'}].map(a=>({...a,x:1,xref:'paper',xanchor:'left',showarrow:false,font:{size:11}})),
+    xaxis:{type:'date',tickformat:n===1?'%d %b %Y':'%Y',hoverformat:'%d %b %Y',...(n===1?{tickvals:h.date}:{nticks:innerWidth<600?5:9})},
+    yaxis:{range:[0,Math.max(160,Math.ceil(peak/10)*10+5)],ticksuffix:'%',gridcolor:'#e6e6e2'}});
+  plot(el,traces,layout);
+}
 function combinedStatus(){
   if(!combined || combined.version!==1 || !Object.keys(combinedNames).every(k=>combined.strategies?.[k])) return 'Combined figures are unavailable.';
   if(!DS) return 'The core publication is unavailable for a date check.';
@@ -609,19 +672,16 @@ function renderCombined(){
   el.innerHTML='<div class="combined-pair"><section class="card"><div class="card-title">'+(message?'Last published equity target':'Combined equity target')+'</div><div class="combined-value">'+percent(m.target_pct)+'</div><p class="combined-note">For the '+fmtDate(m.next_close)+' US close. '+(message?'':action+risk)+'</p>'+warning+'</section>'+
     '<section class="card"><div class="card-title">Marked equity exposure</div><div class="combined-value">'+percent(m.equity_pct)+'</div><p class="combined-note">At the '+fmtDate(m.as_of)+' close, including equity futures. Model NAV '+num(m.nav,4)+' on an opening value of 100.</p></section></div>'+
     '<section class="card"><h2 class="card-title">Equity allocation</h2>'+table(['Marked equity','Target equity'],r=>'<td>'+percent(r.equity_pct)+'</td><td>'+percent(r.target_pct)+'</td>')+'<p class="combined-note">Percentage of model NAV. The two overlays share the equity capacity above the core, with Crowd Sentiment allocated first. The planned ceiling is 145%. A close above 150% triggers a trim.</p></section>'+
-    '<section class="card"><h2 class="card-title">Contribution to combined return</h2>'+table(['Last session (pp)','Since inception (pp)'],r=>'<td class="'+signClass(r.daily_pp)+'">'+pp(r.daily_pp)+'</td><td class="'+signClass(r.inception_pp)+'">'+pp(r.inception_pp)+'</td>')+
+    exposureCardHTML(true)+'<section class="card"><h2 class="card-title">Contribution to combined return</h2>'+table(['Last session (pp)','Since inception (pp)'],r=>'<td class="'+signClass(r.daily_pp)+'">'+pp(r.daily_pp)+'</td><td class="'+signClass(r.inception_pp)+'">'+pp(r.inception_pp)+'</td>')+
     '<p class="combined-note">'+(totals.daily_pp==null?'Opening allocation. Return attribution begins after the next verified close. ':'')+'Daily and cumulative contributions include trading and financing costs. Source: combined model ledger, '+fmtDate(m.as_of)+'. Inception '+fmtDate(m.inception)+'.</p></section>'+links;
+  showExposure(exposureView||(m.exposure?.date.length>1?'forward':'study'));
 }
 async function renderModelStudy(){
   const el=document.getElementById('tabContent');
   if(!combinedStudy){
     el.textContent='Loading historical model results…';
-    if(studyLoading)return;
-    studyLoading=true;
-    try{const r=await fetch('data/combined-backtest.json',{cache:'no-cache'});
-      if(!r.ok)throw Error();combinedStudy=await r.json();}
+    try{await getModelStudy();}
     catch(e){if(state.tab==='backtest')el.textContent='Historical model results are unavailable.';return;}
-    finally{studyLoading=false;}
     if(state.tab!=='backtest')return;
   }
   const b=combinedStudy,s=b.stats,a=b.attribution,e=b.exhibit;
@@ -644,7 +704,7 @@ async function renderModelStudy(){
     note('The larger addition replaces both signals. The smaller addition replaces only US breadth because Crowd Sentiment already supplies extra equity.')+
     (e.request_check?note('Why does the second row need '+fixed+'? The gap between the two averages is '+num(s.combined.mean-s.sentiment.mean,2)+' percentage points. A '+f(e.request_check.request_pct)+' request at each rebalance produced '+f(e.request_check.mean_equity_pct)+' average equity as positions moved between rebalances. A '+fixed+' request reached '+f(s.sentiment_matched.mean)+'.'):''))
     +card('Growth of 100 after modelled costs',note(dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the core with a steady S&amp;P 500 addition.')+'<div id="studyPlot"></div>'+note('Opening, month-end and final marks. The table uses every US close.'))+
-    card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
+    exposureCardHTML(false)+card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
     note('CAGR is the compounded annual growth rate. The two fixed additions were sized over the full sample to match the combined model’s average equity. All portfolios use the same funding and cost rules.'))+
     card('Where the annual return came from',table(['Strategy','Contribution to CAGR','Net gain per 100'],Object.entries(combinedNames).map(([k,name])=>[name,num(e.annual[k],2)+' pp',num(a[k],2)]).concat([['Combined model',f(s.combined.cagr),num(s.combined.end-100,2)]]))+
     note('Daily net strategy returns are linked through time. The contributions add to portfolio CAGR before rounding. The last column shows cumulative profit per 100 of starting capital.'))+
@@ -686,6 +746,7 @@ async function renderModelStudy(){
   const gapBound=Math.ceil(2*Math.max(...e.drawdown_extremes.map(r=>Math.abs(r.gap))))/2+.45;
   riskLayout.yaxis.range=[-gapBound,gapBound];
   Plotly.newPlot('gapStudyPlot',risk,riskLayout,PLOT_CFG);
+  showExposure('study');
 }
 function renderTabBar(){
   document.getElementById('tabBar').innerHTML = TABS.map(([k,label])=>
