@@ -1,11 +1,11 @@
 {
   "contract_version": "1",
   "emitted_by": "multi-strategy-portfolio",
-  "emitted_at": "2026-11-25T14:26:20+00:00",
+  "emitted_at": "2026-11-26T00:28:05+00:00",
   "signals": {
     "monitor_health": {
       "as_of": "2026-11-24",
-      "state": "warn",
+      "state": "stale",
       "value": 11,
       "zone": "worst feed lag 2 of 8 bdays",
       "role": "view-only",
@@ -14,7 +14,7 @@
       "licence": "public",
       "action_hint": "watch",
       "source_file": "docs/data/portfolio-multi-strategy-portfolio.json",
-      "computed_at": "2026-11-25T14:25:31Z",
+      "computed_at": "2026-11-26T00:27:20Z",
       "cadence": "daily"
     }
   }
