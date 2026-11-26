@@ -212,6 +212,14 @@ def email_digest(r, preview=False):
     body += '<p style="margin:8px 0;color:#525650;font-size:13px">' + escape(note) + '</p>'
     text.append(note)
 
+    trial = r.get('risk_trial')
+    if trial:
+        body += '<h2>' + escape(trial['heading']) + '</h2>'
+        text.extend(['', trial['heading']])
+        for line in trial['lines']:
+            body += '<p style="margin:4px 0;max-width:68ch">' + escape(line) + '</p>'
+            text.append(line)
+
     market = build_commentary(r).get('spotlight')
     if market:
         timing = ' · after the US close' if market['after_close'] else ''

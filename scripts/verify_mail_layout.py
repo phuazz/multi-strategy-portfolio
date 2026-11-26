@@ -94,6 +94,10 @@ def verify_attribution_content(report, pdf_path, html_path):
     from html import unescape, escape
     email=' '.join(unescape(re.sub('<[^>]+>', ' ', html.split('</head>',1)[1])).split())
     plain=Path(html_path).with_suffix('.txt').read_text(encoding='utf-8')
+    trial = report.get('risk_trial')
+    if trial:
+        for line in (trial['heading'], *trial['lines']):
+            assert ' '.join(line.split()) in email and line in plain, 'Shadow risk section incomplete'
     from portfolio_commentary import build as build_commentary
     commentary=build_commentary(report)
     assert 'Portfolio manager commentary' in page_one
@@ -108,7 +112,9 @@ def verify_attribution_content(report, pdf_path, html_path):
             assert value in email and value in plain,'Email market insight missing'
         for source in spotlight['sources']:
             assert escape(source['url'],quote=True) in html and source['url'] in plain
-    assert len(email.split()) <= 300 and len(html.encode('utf-8')) < 25_000,'Morning email exceeds digest budget'
+    trial_words = sum(len(line.split()) for line in [trial['heading'], *trial['lines']]) if trial else 0
+    assert trial_words <= 185, 'Shadow risk section exceeds its digest budget'
+    assert len(email.split()) - trial_words <= 300 and len(html.encode('utf-8')) < 25_000,'Morning email exceeds digest budget'
     from render_morning import excess, pct
     for value in (report['nav_date'], 'Attached PDF'):
         assert value in email and value in plain,'Email session readout missing'
