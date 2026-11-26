@@ -1,0 +1,16 @@
+{
+  "symbol": "ES3.SI",
+  "currency": "SGD",
+  "session": "2026-11-25",
+  "previous_session": "2026-11-24",
+  "previous_adjusted": 5.051000118255615,
+  "close": 5.008999824523926,
+  "sgx_price": 5.009,
+  "yahoo_price": 5.009,
+  "field": "previous close",
+  "sgx_quote_utc": "2026-11-26T07:17:00+00:00",
+  "yahoo_quote_utc": "2026-11-26T07:07:26+00:00",
+  "acquired_at": "2026-11-26T07:18:51.247634+00:00",
+  "sgx_source": "https://api.sgx.com/securities/v1.1",
+  "yahoo_source": "https://query1.finance.yahoo.com/v8/finance/chart/ES3.SI"
+}
