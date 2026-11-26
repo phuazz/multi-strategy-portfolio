@@ -64,11 +64,14 @@ the claim only after verifying it did not send. Do not blindly rerun an uncertai
 
 The HTML and plain-text email show 1D, trailing 1W and YTD returns for the
 model and S&P 500 total-return proxy, with arithmetic excess on matched dates.
-The body ranks up to five priced ETFs by absolute daily contribution. Each row
-pairs the ETF’s matched USD return with its beginning-of-session NAV weight
-and signed portfolio impact in basis points. The summary compares their combined
-impact with the full model return and flags attribution
-exceptions. Equal magnitudes are ordered by ticker. It includes one sourced development when
+The body ranks up to five priced ETFs by the magnitude of their daily active contribution.
+Each ETF's active contribution is its absolute portfolio impact less its starting NAV
+weight times the SPY return on the same dates. This compares each invested dollar
+with a dollar invested in the index proxy. It requires no benchmark constituent weights.
+Shown and other priced holdings plus an unassigned balance reconcile to model excess.
+The balance includes unpriced exposures, any unrepresented weight and model reconciliation
+differences. With no matched single-session comparison, the table ranks absolute impact.
+Equal magnitudes are ordered by ticker. The email includes one sourced development when
 the validated briefing identifies a current holding. Selection uses the greatest
 combined current weight of matched holdings, with briefing order breaking ties.
 

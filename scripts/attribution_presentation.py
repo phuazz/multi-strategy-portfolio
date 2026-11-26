@@ -1,5 +1,13 @@
 """Shared numeric selection for the email and PDF; no recalculation of attribution."""
 from historical_attribution import validate
+import math
+
+
+def etf_label(ticker, name=None):
+    """Use the reserve role in prose and include its maturity range in tables."""
+    if ticker == 'SHY':
+        return 'US Treasury reserve, 1–3 years (SHY)' if name is not None else 'Treasury reserve (SHY)'
+    return f'{name} ({ticker})' if name is not None else ticker
 
 
 def bp(value):
@@ -40,17 +48,36 @@ def bridge_text(p):
             f'Price coverage {p["coverage"]:.1%} of held weight-days. Displayed sums may differ through rounding.')
 
 
-def daily_drivers(attribution, etf_context=None):
+def daily_drivers(attribution, etf_context=None, session=None):
     validate(attribution)
     period = attribution['periods']['1D']
     if period['status'] == 'unavailable':
-        return []
-    priced = (row for row in period['etf'] if row['contrib'] not in (None, 0))
-    selected = sorted(priced, key=lambda row: (-abs(row['contrib']), row['ticker']))[:5]
+        return [], None
+    proxy = None
+    if (session and session.get('SPY') is not None
+            and (session.get('start'), session.get('end')) == (period['start'], period['end'])
+            and period.get('observations') == 1
+            and math.isclose(period['model_return'], session['model'], abs_tol=1e-10)):
+        proxy = session['SPY']
     returns = {}
     if etf_context:
         window = etf_context['periods']['1D']
         if (window['start'], window['end']) != (period['start'], period['end']):
             raise ValueError('Daily ETF return dates differ from contribution dates')
         returns = {row['ticker']: row['return'] for row in window['rows']}
-    return [dict(row, usd_return=returns.get(row['ticker'])) for row in selected]
+    priced = []
+    for row in period['etf']:
+        if row['contrib'] is None:
+            continue
+        active = None if proxy is None else row['contrib'] - row['avg_weight'] * proxy
+        priced.append(dict(row, usd_return=returns.get(row['ticker']), active=active))
+    rank = 'active' if proxy is not None else 'contrib'
+    ranked = sorted((row for row in priced if abs(row[rank]) > 1e-12),
+                    key=lambda row: (-abs(row[rank]), row['ticker']))
+    selected = ranked[:5]
+    if proxy is None:
+        return selected, None
+    total = session['model'] - proxy
+    known = sum(row['active'] for row in priced)
+    shown = sum(row['active'] for row in selected)
+    return selected, dict(shown=shown, other=known-shown, unassigned=total-known, total=total)

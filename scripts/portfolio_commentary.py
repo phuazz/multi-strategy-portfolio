@@ -4,6 +4,7 @@ Python datetime months are 1-indexed. Source claims remain labelled; the
 companion never replaces quantitative returns or supplies causal attribution.
 """
 from html import escape
+from attribution_presentation import etf_label
 from private_market_context import ContextError, validate, stamp, _NYSE
 
 
@@ -30,7 +31,7 @@ def build(report):
             largest_weight=weight
             spotlight=dict(title=item['title'], summary=item['summary'], view=item['portfolio_relevance'], held=matched,
                            confidence=item['confidence'], after_close=bool(timing), sources=item['sources'])
-        exposure=' Current holdings: '+', '.join(matched)+'.' if matched else ' No current holding matched.'
+        exposure=' Current holdings: '+', '.join(etf_label(ticker) for ticker in matched)+'.' if matched else ' No current holding matched.'
         text=(item['summary']+' Interpretation: '+item['interpretation']+
               ' Relevance: '+item['portfolio_relevance']+exposure+timing)
         paragraphs.append((item['title']+' ['+str(i)+'; '+item['confidence']+']',text))

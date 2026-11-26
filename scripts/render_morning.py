@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import math
 
 from morning_report import PAGE, URL, fmt
-from attribution_presentation import bp, comparison_rows, leaders, bridge_text, daily_drivers
+from attribution_presentation import bp, comparison_rows, leaders, bridge_text, daily_drivers, etf_label
 from return_context import rows as context_rows
 from return_context_visuals import RiskMove, ETFMove, LIMIT
 from portfolio_commentary import build as build_commentary
@@ -143,12 +143,12 @@ def email_digest(r, preview=False):
     body += '</tbody></table>'
 
     period = r['attribution']['periods']['1D']
-    heading = 'Largest daily ETF contributions'
+    selected, bridge = daily_drivers(r['attribution'], r.get('etf_return_context'), one)
+    heading = 'Daily drivers of excess return' if bridge else 'Largest daily ETF contributions'
     body += f'<h2>{heading}</h2>'
     text.extend(['', heading])
-    selected = daily_drivers(r['attribution'], r.get('etf_return_context'))
     if selected:
-        headers = ('ETF', '1D return', 'Start wt.', 'Impact')
+        headers = ('ETF', '1D return', 'Start wt.', 'Impact') + (('Active',) if bridge else ())
         body += '<table style="width:100%;max-width:600px;border-collapse:collapse"><thead><tr>'
         for i, header in enumerate(headers):
             align = 'right' if i else 'left'
@@ -156,7 +156,7 @@ def email_digest(r, preview=False):
         body += '</tr></thead><tbody>'
         text.append(' · '.join(headers))
     for row in selected:
-        holding = f'{row["name"]} ({row["ticker"]})'
+        holding = etf_label(row['ticker'], row['name'])
         etf_return = pct(row['usd_return']) if row['usd_return'] is not None else '–'
         weight = f'{row["avg_weight"]:.2%}'
         impact = bp(row['contrib'])
@@ -165,19 +165,34 @@ def email_digest(r, preview=False):
         body += f'<tr><th scope="row" style="{cell};text-align:left;font-weight:normal">{escape(holding)}</th>'
         for value in (etf_return, weight):
             body += f'<td style="{cell};text-align:right;white-space:nowrap">{value}</td>'
-        body += f'<td style="{cell};text-align:right;white-space:nowrap;color:{colour}"><strong>{impact}</strong></td></tr>'
-        text.append(' · '.join((holding, etf_return, weight, impact)))
+        body += f'<td style="{cell};text-align:right;white-space:nowrap;color:{colour}">{impact}</td>'
+        values = [holding, etf_return, weight, impact]
+        if bridge:
+            active = bp(row['active'])
+            colour = GREEN if row['active'] > 0 else RED
+            body += f'<td style="{cell};text-align:right;white-space:nowrap;color:{colour}"><strong>{active}</strong></td>'
+            values.append(active)
+        body += '</tr>'
+        text.append(' · '.join(values))
     if selected:
         body += '</tbody></table>'
     notes = []
     if period['status'] == 'unavailable':
         notes.append('Daily ETF attribution is unavailable.')
+    elif bridge:
+        if selected and selected[0]['ticker'] == 'SHY':
+            reserve = selected[0]
+            notes.append(f'The {reserve["avg_weight"]:.1%} {etf_label("SHY")} had the largest measured '
+                         f'active impact ({bp(reserve["active"])} versus SPY).')
+        notes.append('Active = start weight × (ETF USD return − SPY return). Ranked by absolute active impact.')
+        notes.append(f'Shown {bp(bridge["shown"])} · other priced {bp(bridge["other"])} · '
+                     f'unassigned {bp(bridge["unassigned"])} = model excess {bp(bridge["total"])}.')
     elif not selected:
         notes.append('No signed contribution among priced holdings.')
     else:
         net = bp(sum(row['contrib'] for row in selected))
         notes.append(f'Combined impact {net}, versus {bp(period["model_return"])} for the model. '
-                     'Impact uses the starting NAV weight and the ETF’s USD return. Ranked by absolute impact.')
+                     'Matched daily benchmark attribution unavailable.')
     if period['status'] == 'review':
         notes.append(f'Attribution under review. ETF residual {bp(period["etf_residual"])}, '
                      f'strategy residual {bp(period["strategy_residual"])}.')
@@ -196,7 +211,7 @@ def email_digest(r, preview=False):
                  '</strong> (' + escape(market['confidence']) + '). ' + escape(market['summary']) + '</p>')
         exposure = 'Portfolio read-through: ' + market['view']
         body += '<p style="margin:4px 0">' + escape(exposure) + '</p>'
-        holdings = 'Linked holdings: ' + ', '.join(market['held'])
+        holdings = 'Linked holdings: ' + ', '.join(etf_label(ticker) for ticker in market['held'])
         links = [f'<a href="{escape(s["url"], quote=True)}">{escape(s["publisher"])}</a>' for s in market['sources']]
         body += '<p style="margin:4px 0;font-size:13px">' + escape(holdings) + ' · ' + ' / '.join(links) + '</p>'
         text.extend(['', heading, f'{market["title"]} ({market["confidence"]}).', market['summary'], exposure, holdings])
@@ -332,7 +347,7 @@ def report_pdf(r, path, preview=False):
         cells=[]
         for hz in ('1D','1M'):
             x=selected[hz][i] if i<len(selected[hz]) else None
-            cells.extend([x['name']+' ('+x['ticker']+')' if x else '-',BarValue(x['contrib'],leader_scale,label=bp(x['contrib'])) if x else '-'])
+            cells.extend([etf_label(x['ticker'], x['name']) if x else '-',BarValue(x['contrib'],leader_scale,label=bp(x['contrib'])) if x else '-'])
         leader_rows.append(cells)
     t(['1D ETF','Impact','1M ETF','Impact'],leader_rows,[width*.36,width*.14,width*.36,width*.14],padding=3)
     p(f'Common magnitude scale: 0-{leader_scale*10000:.1f} bp. Green adds to return; red detracts. Selection is independent for each horizon.','small')
@@ -385,7 +400,7 @@ def report_pdf(r, path, preview=False):
         for h,cp in etf_context['periods'].items():
             p(f'{h}: {cp["start"]} to {cp["end"]}; 252 prior valid USD valuation returns per estimate. Per-ETF estimation dates are available in the dashboard. Missing price/history estimates are unavailable.','small')
     t(['ETF / owning strategy','Avg. wt 1M','1D','1M'],
-      [[x['name']+' ('+x['ticker']+')'+(' / priced as '+x['price_symbol'] if x['price_symbol']!=x['ticker'] else '')+'\n'+', '.join(strategy_names.get(c,c) for c in x['strategies']),
+      [[etf_label(x['ticker'], x['name'])+(' / priced as '+x['price_symbol'] if x['price_symbol']!=x['ticker'] else '')+'\n'+', '.join(strategy_names.get(c,c) for c in x['strategies']),
         '-' if x['avg_weight_1M'] is None else f'{x["avg_weight_1M"]:.1%}']+[ETFMove(x[h],risk_by[h].get(x['ticker'])) if etf_context else BarValue(x[h],scale,label=bp(x[h])) for h in ('1D','1M')] for x in etfs],
       [width*.40,width*.10,width*.25,width*.25] if etf_context else [width*.49,width*.15,width*.18,width*.18])
     p(('ETF tracks show own-volatility units; contribution figures remain in bp. ' if etf_context else f'All ETF bars share a 0-{scale*10000:.1f} bp magnitude scale. ')+'A dash means the complete period cannot be verified; known partial marks remain in the reconciliation bridge. Zero means no contribution or no position in that period.','small')

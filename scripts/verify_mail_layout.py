@@ -110,7 +110,7 @@ def verify_attribution_content(report, pdf_path, html_path):
             assert escape(source['url'],quote=True) in html and source['url'] in plain
     assert len(email.split()) <= 300 and len(html.encode('utf-8')) < 25_000,'Morning email exceeds digest budget'
     from render_morning import excess, pct
-    for value in ('Largest daily ETF contributions', report['nav_date'], 'Attached PDF'):
+    for value in (report['nav_date'], 'Attached PDF'):
         assert value in email and value in plain,'Email session readout missing'
     for key,label in [('1 session','1D'), ('1 week','1W'), ('YTD','YTD')]:
         row=next((row for row in report['performance'] if row['period']==key), {})
@@ -127,10 +127,15 @@ def verify_attribution_content(report, pdf_path, html_path):
         assert row['name'] in text, f'Strategy missing: {row["name"]}'
     for horizon in ('1D','1M'):
         assert horizon in text
-    from attribution_presentation import daily_drivers
-    for row in daily_drivers(attribution,report.get('etf_return_context')):
-        values=(f'{row["name"]} ({row["ticker"]})', pct(row['usd_return']) if row['usd_return'] is not None else '–',
-                f'{row["avg_weight"]:.2%}', bp(row['contrib']))
+    from attribution_presentation import daily_drivers, etf_label
+    one=next(row for row in report['performance'] if row['period']=='1 session')
+    drivers,bridge=daily_drivers(attribution,report.get('etf_return_context'),one)
+    if bridge:
+        for label,key in [('Shown','shown'),('other priced','other'),('unassigned','unassigned'),('model excess','total')]:
+            assert label+' '+bp(bridge[key]) in email and label+' '+bp(bridge[key]) in plain
+    for row in drivers:
+        values=(etf_label(row['ticker'], row['name']), pct(row['usd_return']) if row['usd_return'] is not None else '–',
+                f'{row["avg_weight"]:.2%}', bp(row['contrib'])) + ((bp(row['active']),) if bridge else ())
         assert ' '.join(values) in email and ' · '.join(values) in plain, 'Email driver row mismatch'
     if report.get('return_context'):
         from return_context import rows

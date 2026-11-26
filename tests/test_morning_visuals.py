@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from render_morning import BarValue, GREEN, RED, bar_html, return_scale, excess, email_digest
-from attribution_presentation import leaders, comparison_rows
+from attribution_presentation import leaders, comparison_rows, daily_drivers
 
 
 def test_positive_negative_use_symmetric_magnitude_scale():
@@ -96,6 +96,21 @@ def test_bad_attribution_cannot_be_presented_as_reconciled():
     r['attribution']['periods']['1D']['etf'][0]['known_contrib']=float('nan')
     with pytest.raises(ValueError,match='Non-finite'):
         email_digest(r)
+
+
+def test_active_drivers_rank_priced_exposures_and_bridge_incomplete_coverage():
+    r=sample([0, -.001, .002, -.002, .003, .0001, 0])
+    period=r['attribution']['periods']['1D']
+    period.update(observations=1)
+    period['etf'][-1]['contrib']=None
+    session=dict(r['performance'][0], start=period['start'], end=period['end'], SPY=-.014)
+    selected, bridge=daily_drivers(r['attribution'], session=session)
+    assert [row['ticker'] for row in selected]==['T4','T2','T5','T0','T1']
+    assert selected[-1]['active']==pytest.approx(.001)  # Lost money, beat the proxy.
+    assert bridge['unassigned']==pytest.approx(period['etf_residual'] - session['SPY']/7)
+    assert bridge['shown']+bridge['other']+bridge['unassigned']==pytest.approx(session['model']-session['SPY'])
+    assert daily_drivers(r['attribution'], session=dict(session,start='2026-10-30'))[1] is None
+    assert daily_drivers(r['attribution'], session=dict(session,SPY=None))[1] is None
 
 
 def test_absent_position_is_zero_but_incomplete_period_is_missing():
