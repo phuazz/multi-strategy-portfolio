@@ -48,7 +48,8 @@ recipient list is used.
 
 All invocations share one Actions concurrency group. The `morning-mail-state` branch
 holds one ledger record per valuation date and message type (report or delay).
-It contains status, content hash, timestamps and workflow run ID only. It never
+It contains status, content hash, timestamps, workflow run ID and the shadow
+trial checkpoint described below. It never
 contains a recipient, password, body, attachment or personal identifier. A pending
 claim is committed before SMTP submission; confirmed acceptance changes it to sent.
 Reports are deduplicated by valuation date, including holiday repeats.
@@ -61,6 +62,38 @@ at `portfolio-monitor.local`. Repair to sent after verifying acceptance, or remo
 the claim only after verifying it did not send. Do not blindly rerun an uncertain send.
 
 ## Report and publication checks
+
+### Four-rebalance shadow risk trial
+
+The opening comparison uses the public 24 November 2026 paper book, valued on
+25 November. The six existing flags are SHY, IUHC, IUCS, EXV1, EXH9 and EXH1.
+The opening book counts as zero reviews. The first verified full morning email
+covering each subsequent NYSE weekly fill carries one review in both email
+formats. An unchanged allocation qualifies once the weekly book is confirmed.
+A late publication or a midweek revision of the same book cannot add a review.
+The fourth review closes the trial and ends the risk section.
+
+The weekly comparison uses the previous weekly review, initially the opening
+book. It pairs the worst fully priced stress with recovery participation, names
+the largest contributor to the stress change when measurable, and gives coverage
+and gap counts. Between reviews, compare with the last risk section delivered.
+Report a regime change, gap flag entry, clearance or exit, lost pricing coverage,
+unavailable or restored gap assessments, changed policy or scenario assumptions,
+or a fully priced same-scenario move of at least 0.50 percentage points of NAV
+in either direction. Smaller moves accumulate until the next reported comparison.
+This threshold is an illustrative email filter. A shadow flag invites review.
+The existing digest retains its 300-word budget. A risk section has its own
+185-word ceiling. When many observations change together it gives the number
+omitted and points to Risk & Regime. The whole email retains its 25 KB limit.
+
+Each full delivery claim carries the weekly fill date, review count, availability
+flag and immutable Git blob hashes for two public model datasets. The report
+ledger commits these references with the existing SMTP claim. Only a confirmed
+send supplies the next checkpoint. A delay notice consumes no review. A pending
+trial delivery requires the ordinary SMTP reconciliation above, including when
+the next valuation date has arrived. Preserve its checkpoint when repairing
+the record. Missing risk data produce one availability notice and defer a due
+review until pricing is verified. No new job or recipient is required.
 
 The HTML and plain-text email show 1D, trailing 1W and YTD returns for the
 model and S&P 500 total-return proxy, with arithmetic excess on matched dates.

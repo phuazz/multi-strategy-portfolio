@@ -1,7 +1,7 @@
 """Freshness-gated GitHub email with a durable, fail-closed delivery ledger.
 
 Python months are 1-indexed; weekday Monday=0. All scheduling uses Asia/Singapore.
-The state branch contains only session dates, status, hashes and workflow run IDs.
+The state branch contains delivery metadata and public shadow-trial snapshot references.
 No recipient, credential, email body or personal identifier is committed.
 """
 from __future__ import annotations
@@ -24,6 +24,7 @@ from config import MORNING_BENCHMARKS, load_registry
 from morning_report import URL, PAGE, build, series
 from nyse_sessions import last_completed_session
 from portfolio_freshness import evaluate_book
+from morning_risk_trial import BASE_DATE, INITIAL, git_blob, panel, plan
 from render_morning import write_bundle, delay_html
 from source_revision import changed_files, resolve_snapshot
 from private_market_context import fetch as fetch_context
@@ -115,8 +116,41 @@ class GitHubLedger:
         r.raise_for_status()
         return r.json()['content']['sha']
 
+    def trial_state(self, expected):
+        """Use the most recent accepted trial checkpoint, including across holidays or outages."""
+        root = self.request('GET', f'/git/trees/{STATE_BRANCH}')
+        root.raise_for_status()
+        folder = next((e for e in root.json()['tree'] if e['path'] == 'mail-ledger'), None)
+        if not folder:
+            return INITIAL
+        listing = self.request('GET', '/git/trees/' + folder['sha'])
+        listing.raise_for_status()
+        tree = listing.json()
+        if tree['truncated']:
+            raise ValueError('Incomplete delivery ledger listing')
+        names = sorted((e['path'] for e in tree['tree'] if e['path'].endswith('-report.json')
+                        and e['path'][:10] >= BASE_DATE), reverse=True)
+        for name in names:
+            record, _ = self.read(name[:-5])
+            if record is None:
+                raise ValueError('Delivery ledger changed during trial lookup')
+            if 'risk_trial' in record:
+                if record['status'] != 'sent' or name[:10] >= expected:
+                    raise ValueError('Trial checkpoint requires delivery reconciliation')
+                return record['risk_trial']
+        return INITIAL
 
-def deliver_once(ledger,key,subject,body,html,pdf,send,now):
+    def published_panel(self, sha):
+        r = self.request('GET', '/git/blobs/' + sha)
+        r.raise_for_status()
+        obj = r.json()
+        raw = base64.b64decode(obj['content'])
+        if obj['sha'] != sha or git_blob(raw) != sha:
+            raise ValueError('Archived public dataset hash mismatch')
+        return panel(json.loads(raw))
+
+
+def deliver_once(ledger,key,subject,body,html,pdf,send,now,trial=None):
     record,sha=ledger.read(key)
     if record:
         if record.get('status')=='sent': return False
@@ -126,6 +160,8 @@ def deliver_once(ledger,key,subject,body,html,pdf,send,now):
     message_id=f'<msp-{hashlib.sha256(key.encode()).hexdigest()[:24]}@portfolio-monitor.local>'
     record={'status':'sending','attempted_at_utc':now.isoformat(),'content_sha256':digest,
             'run_id':os.environ.get('GITHUB_RUN_ID','local-validation')}
+    if trial is not None:
+        record['risk_trial'] = trial
     claim=ledger.write(key,record,sha)
     # A crash after the claim or an uncertain SMTP result fails closed. Operators
     # inspect the deterministic Message-ID in Gmail before repairing the ledger.
@@ -166,7 +202,10 @@ def verified_bundle(report, out, dataset, now):
     try:verify(report)
     except Exception:
         if not report.get('market_context'):raise
+        section = report.get('risk_trial')
         report=build(dataset,now)
+        if section:
+            report['risk_trial'] = section
         verify(report)
         return report,'omitted_after_render_check'
     return report,None
@@ -201,7 +240,7 @@ def main():
         delay_record,_=ledger.read(expected+'-delay')
         if report_record and report_record.get('status')=='sent':
             print('already-sent'); return
-    d=None; report=None; context_status='not_attempted'
+    d=None; report=None; context_status='not_attempted'; trial=None
     try:
         response=requests.get(URL,params={'mail_check':now.isoformat()},timeout=45)
         response.raise_for_status(); d=response.json()
@@ -217,6 +256,13 @@ def main():
         if not reasons or args.preview:
             context,context_status=fetch_context(d['meta']['live_asOf'],now,local_path=args.market_context)
             report=build(d,now,market_context=context)
+            if ledger and not reasons:
+                state = ledger.trial_state(expected)
+                blob = git_blob(response.content)
+                section, trial = plan(d, blob, state, ledger.published_panel, now)
+                if trial != state and trial['last'] == blob and not ledger.published_panel(blob):
+                    raise ValueError('Current risk checkpoint is unavailable in the public archive')
+                report['risk_trial'] = section
     except Exception as exc:
         reasons=[f'Data verification failed ({type(exc).__name__})']
         if args.preview: raise
@@ -244,7 +290,7 @@ def main():
             raise ValueError('PDF must contain 3-6 nonempty A4 pages including full attribution')
         subject=f'Multi-Strategy | {report["performance"][0]["model"]:+.2%} | Close {expected}'
         body=(out/'report.txt').read_text(encoding='utf-8')
-        deliver_once(ledger,expected+'-report',subject,body,html,pdf,send_smtp,now)
+        deliver_once(ledger,expected+'-report',subject,body,html,pdf,send_smtp,now,trial=trial)
     else:
         subject=f'Multi-Strategy | data delayed | Expected close {expected}'
         body=f'The morning report is waiting for verified data for the US close {expected}.\n'+'\n'.join(reasons)+f'\nThe full report and PDF will follow when the checks pass.\n{PAGE}'
