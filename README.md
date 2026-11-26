@@ -1,8 +1,7 @@
 # Multi-Strategy Portfolio — Model Portfolio Monitor
 
-A real-time monitoring dashboard for a personal systematic
-**model (paper) portfolio**: *Multi-Strategy Portfolio* — a breadth- and trend-driven
-global ETF rotation with a systematic de-risk overlay. Published to GitHub Pages.
+The landing view reports the combined model equity target, marked equity and net contributions from the Breadth ETF core, Crowd Sentiment and mid-term US breadth. The core tabs retain their standalone history, holdings and attribution. The private post-close process updates only `docs/data/combined-model.json` after reconciling the three contributions to portfolio NAV. The last verified close stays visible with a historical label if the next close has passed or the core and combined dates differ.
+
 
 > **Paper model.** This is a research and monitoring tool for a hypothetical model
 > portfolio. It is not investment advice, an offer, or a record of actual trading.

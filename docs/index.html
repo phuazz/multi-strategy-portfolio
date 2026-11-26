@@ -240,14 +240,27 @@ a{color:var(--b-text);text-decoration:none}
 .construction th{white-space:normal}
 .construction details>summary:focus-visible{outline:2px solid currentColor}
 </style>
+<style>
+.combined-view #headlineSent,.combined-view #kpiStrip,.combined-view #staleBanner,.combined-view #footer{display:none!important}
+.combined-pair{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.combined-value{font-size:clamp(28px,4vw,44px);font-weight:700;letter-spacing:-.04em}
+.combined-note{max-width:60ch;line-height:1.55;font-size:14px;color:var(--t2);margin:10px 0 4px}
+.combined-table{margin-top:12px;table-layout:fixed}
+.combined-table thead th,.combined-table tbody td{white-space:normal}
+.combined-table tbody tr:last-child{background:var(--bg3);font-weight:700}
+.combined-table td:not(:first-child),.combined-table th:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.combined-links{display:flex;gap:12px;flex-wrap:wrap}
+.combined-links button{min-height:44px;cursor:pointer}
+@media(max-width:650px){.combined-pair{grid-template-columns:1fr;gap:0}.combined-table tbody td,.combined-table thead th{padding:8px 4px;font-size:12px}}
+</style>
 </head>
-<body>
+<body class="combined-view">
 <div class="shell">
   <div id="staleBanner" class="stale-banner" style="display:none"></div>
   <div class="masthead">
     <div class="mh-left">
       <h1 id="mhTitle">Multi-Strategy Portfolio</h1>
-      <div class="mh-sub" id="mhSub">Systematic breadth- and trend-driven global ETF rotation</div>
+      <div class="mh-sub" id="mhSub">Breadth ETF core · Crowd Sentiment · Mid-term US breadth</div>
     </div>
     <div class="mh-right" id="mhRight"></div>
   </div>
@@ -263,7 +276,9 @@ a{color:var(--b-text);text-decoration:none}
 /* ============================ config + state ============================ */
 const DATA_FILE = 'data/portfolio-multi-strategy-portfolio.json';
 let DS = null;
-const state = { tab:'overview', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
+let combined = null;
+let combinedExpiryTimer;
+const state = { tab:'combined', perfWindow:'YTD', perfLog:false, attrHorizon:'1D', attrView:'etf', riskWindow:'SI', benchmarks:null, ovDonut:'sleeve', ovMoversHz:'1D', allocGroup:'sleeve', allocWin:'SI', actFilter:'all', blotAct:'all', blotQ:'' };
 const PALETTE = ['#2563eb','#1a8754','#b45309','#7c3aed','#0891b2','#be185d','#a16207','#16a34a','#9333ea','#0d9488','#dc2626','#8a8a82'];
 const WIN_OV=['1W','1M','3M','6M','YTD','1Y','SI'], WIN_PERF=['1W','1M','3M','6M','YTD','1Y','3Y','SI'], WIN_RISK=['1W','1M','6M','YTD','1Y','3Y','SI'];
 let _blotter=[], _actions=[];   // Trades-tab filterable rows
@@ -275,7 +290,7 @@ let _blotter=[], _actions=[];   // Trades-tab filterable rows
    already on the Overview headline and masthead pill, so its detail is
    reference material rather than a first question. */
 const TABS = [
-  ['overview','Overview'], ['allocation','Allocation'], ['trades','Trades'], ['attribution','Attribution'], ['performance','Performance'],
+  ['combined','Combined model'], ['overview','Core overview'], ['allocation','Allocation'], ['trades','Trades'], ['attribution','Core attribution'], ['performance','Performance'],
   ['risk','Risk & Regime'], ['signals','Signals'], ['health','Data Health'], ['method','Methodology'],
 ];
 const SLEEVE_COLORS = {A:'#2563eb',B:'#1a8754',C:'#b45309',D:'#7c3aed',TILT:'#0891b2',CASH:'#8a8a82'};
@@ -320,16 +335,17 @@ function plot(el, traces, layout){ Plotly.react(el, traces, layout, PLOT_CFG); }
 
 /* ============================ data loading ============================ */
 async function bootstrap(){
+  const aggregateFetch=fetch('data/combined-model.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null);
   try{
     const resp = await fetch(DATA_FILE, {cache:'no-cache'});
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     DS = await resp.json();
   }catch(e){
-    document.getElementById('tabContent').innerHTML =
-      `<div class="loading">Could not load <code>${DATA_FILE}</code>.<br><span class="muted">${esc(e.message)}</span><br><br>
-       Run <code>python scripts/pipeline.py</code> then serve from the project root or <code>docs/</code>.</div>`;
+    combined=await aggregateFetch;
+    renderTabBar();renderTab();
     return;
   }
+  combined=await aggregateFetch;
   state.benchmarks = Object.keys(DS.equity.benchmarks||{}).filter(k=>DS.equity.benchmarks[k].default);
   if(!state.benchmarks.length) state.benchmarks=['SPY'];
   renderHeadline(); renderKPIs(); renderTabBar(); renderFooter(); renderTab(); startHealthClock();
@@ -385,6 +401,7 @@ function refreshHealthSurfaces(){
   const h=effectiveHealth(DS);
   renderMasthead(h); renderStaleBanner(h);
   if(state.tab==='health') renderHealth(h);
+  if(state.tab==='combined') renderCombined();
   if(state.tab==='risk'){
     const riskHealth=document.querySelector('[data-construction-health]');
     if(riskHealth) riskHealth.textContent=h.assessment_current?'Dataset health: '+h.level+'.':'Current freshness unverified.';
@@ -405,8 +422,14 @@ function startHealthClock(){
 /* ============================ masthead / KPIs ============================ */
 function renderMasthead(h=effectiveHealth(DS)){
   const m=DS.meta, rg=DS.regime;
+  if(state.tab==='combined'){
+    document.getElementById('mhTitle').textContent='Multi-Strategy Portfolio';
+    document.getElementById('mhSub').textContent='Breadth ETF core · Crowd Sentiment · Mid-term US breadth';
+    document.getElementById('mhRight').innerHTML='<span class="pill pill-paper">Combined model</span>';
+    return;
+  }
   document.getElementById('mhTitle').textContent = m.name;
-  document.getElementById('mhSub').textContent = m.descriptor + ' · weekly-rebalanced · since '+fmtDate(m.inception);
+  document.getElementById('mhSub').textContent = 'Breadth ETF core · '+m.descriptor + ' · since '+fmtDate(m.inception);
   const onoff = rg.state==='RISK_ON' ? 'on':'off';
   const hl = h.level;
   document.getElementById('mhRight').innerHTML = [
@@ -554,6 +577,42 @@ function renderStaleBanner(h=effectiveHealth(DS)){
 }
 
 /* ============================ tab nav ============================ */
+const combinedNames={core:'Breadth ETF core',sentiment:'Crowd Sentiment',thrust:'Mid-term US breadth'};
+function combinedStatus(){
+  if(!combined || combined.version!==1 || !Object.keys(combinedNames).every(k=>combined.strategies?.[k])) return 'Combined figures are unavailable.';
+  if(!DS) return 'The core publication is unavailable for a date check.';
+  if(combined.as_of!==(DS.meta.live_asOf||DS.meta.asOf)) return 'The combined and core publications have different closing dates.';
+  if(!(Date.now()<Date.parse(combined.expires_utc))) return 'The next US close has passed. A new combined mark is due.';
+  return '';
+}
+function renderCombined(){
+  const el=document.getElementById('tabContent'),message=combinedStatus(),m=combined;
+  clearTimeout(combinedExpiryTimer);
+  if(m && !message){
+    const delay=Math.min(2147483647,Math.max(1,Date.parse(m.expires_utc)-Date.now()+1));
+    combinedExpiryTimer=setTimeout(()=>{if(state.tab==='combined')renderCombined();},delay);
+  }
+  const links='<div class="card"><div class="card-title">Inside the Breadth ETF core</div><p class="combined-note">Explore the four core sleeves and their ETFs on standalone core NAV.</p><div class="combined-links"><button class="tab" onclick="setTab(\'attribution\')">Core return attribution →</button><button class="tab" onclick="setTab(\'allocation\')">Core allocations →</button></div></div>';
+  if(!m || message==='Combined figures are unavailable.'){el.innerHTML='<div class="card">Combined figures are unavailable.</div>'+links;return;}
+  const percent=x=>num(x,2)+'%', pp=x=>x==null?'—':(x>0?'+':'')+num(x,3);
+  const names=Object.entries(combinedNames);
+  const lines=names.map(([k,label])=>[label,m.strategies[k]]);
+  const totals={target_pct:m.target_pct,equity_pct:m.equity_pct,daily_pp:null,inception_pp:null};
+  if(m.strategies.core.daily_pp!=null){
+    totals.daily_pp=lines.reduce((a,[,r])=>a+r.daily_pp,0);
+    totals.inception_pp=m.nav-100;
+  }
+  lines.push(['Combined model',totals]);
+  function table(head,render){return '<table class="tbl combined-table"><thead><tr><th>Strategy</th>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+lines.map(([name,row])=>'<tr><td>'+name+'</td>'+render(row)+'</tr>').join('')+'</tbody></table>';}
+  const action={carry:'Carry existing positions. The reference target does not require a rebalance at this close.',reset:'Rebalance to the target at the next US close.',trim:'Reduce model equity at the next US close.'}[m.action];
+  const risk=m.trim_pct>0?' At the observed marks, trim '+num(m.trim_pct,2)+' percentage points to return to 145%.':'';
+  const warning=message?'<p class="combined-note" role="status"><strong>Historical snapshot.</strong> '+message+'</p>':'';
+  el.innerHTML='<div class="combined-pair"><section class="card"><div class="card-title">'+(message?'Last published equity target':'Combined equity target')+'</div><div class="combined-value">'+percent(m.target_pct)+'</div><p class="combined-note">For the '+fmtDate(m.next_close)+' US close. '+(message?'':action+risk)+'</p>'+warning+'</section>'+
+    '<section class="card"><div class="card-title">Marked equity exposure</div><div class="combined-value">'+percent(m.equity_pct)+'</div><p class="combined-note">At the '+fmtDate(m.as_of)+' close, including equity futures. Model NAV '+num(m.nav,4)+' on an opening value of 100.</p></section></div>'+
+    '<section class="card"><h2 class="card-title">Equity allocation</h2>'+table(['Marked equity','Target equity'],r=>'<td>'+percent(r.equity_pct)+'</td><td>'+percent(r.target_pct)+'</td>')+'<p class="combined-note">Percentage of model NAV. The two overlays share the equity capacity above the core, with Crowd Sentiment allocated first. The planned ceiling is 145%. A close above 150% triggers a trim.</p></section>'+
+    '<section class="card"><h2 class="card-title">Contribution to combined return</h2>'+table(['Last session (pp)','Since inception (pp)'],r=>'<td class="'+signClass(r.daily_pp)+'">'+pp(r.daily_pp)+'</td><td class="'+signClass(r.inception_pp)+'">'+pp(r.inception_pp)+'</td>')+
+    '<p class="combined-note">'+(totals.daily_pp==null?'Opening allocation. Return attribution begins after the next verified close. ':'')+'Daily and cumulative contributions include trading and financing costs. Source: combined model ledger, '+fmtDate(m.as_of)+'. Inception '+fmtDate(m.inception)+'.</p></section>'+links;
+}
 function renderTabBar(){
   document.getElementById('tabBar').innerHTML = TABS.map(([k,label])=>
     `<button class="tab ${state.tab===k?'active':''}" data-tab="${k}">${label}</button>`).join('');
@@ -561,7 +620,10 @@ function renderTabBar(){
 }
 function setTab(k){ state.tab=k; renderTabBar(); renderTab(); window.scrollTo({top:0,behavior:'smooth'}); }
 function renderTab(){
-  const fn = ({overview:renderOverview, allocation:renderAllocation, performance:renderPerformance,
+  document.body.classList.toggle('combined-view',state.tab==='combined');
+  if(DS)renderMasthead();
+  if(!DS && state.tab!=='combined'){document.getElementById('tabContent').textContent='The Breadth ETF core dataset is unavailable.';return;}
+  const fn = ({combined:renderCombined, overview:renderOverview, allocation:renderAllocation, performance:renderPerformance,
     attribution:renderAttribution, risk:renderRisk, signals:renderSignals, health:renderHealth,
     method:renderMethod, trades:renderTrades})[state.tab] || (()=>'');
   document.getElementById('tabContent').innerHTML = '<div></div>';
@@ -1921,6 +1983,7 @@ function renderHealth(h=effectiveHealth(DS)){
     </div>
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">Feed freshness</div>
+      <p class="combined-note">Combined model aggregates · ${fmtDate(combined?.as_of)} · checked against the core close. ${combinedStatus()||('Valid until the '+fmtDate(combined.next_close)+' US close.')}</p>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Feed</th><th>As of</th><th class="r" title="Lag at the last health check">Lag</th><th class="r">Budget</th><th class="c">Status</th><th>Engine computed</th></tr></thead>
       <tbody>${h.feeds.map(feedRow).join('')}</tbody></table></div>
       <div class="card-note" style="margin-top:8px">The live NAV refreshes daily and is measured in NYSE sessions against the last completed session — a budget of zero, so one session behind reads STALE. The executed portfolio is checked separately against the latest completed Monday core fill, rolling NYSE holidays forward. Current prices on an older portfolio read STALE. The breadth panel and the strategy-equity backtest keep their wider business-day budgets. The S&amp;P 500 row measures the engine's benchmark export (plus its yfinance extension) in sessions behind the NAV's own as-of: one behind is WARN and every S&amp;P-relative figure carries a date caveat; the series is never forward-filled onto a date it has no bar for.</div>

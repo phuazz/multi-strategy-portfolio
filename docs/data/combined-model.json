@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "as_of": "2026-11-25",
+  "next_close": "2026-11-27",
+  "inception": "2026-11-25",
+  "expires_utc": "2026-11-27T18:00:00+00:00",
+  "action": "carry",
+  "trim_pct": 0.0,
+  "target_pct": 85.0,
+  "equity_pct": 84.8763631,
+  "nav": 100.0,
+  "strategies": {
+    "core": {
+      "target_pct": 55.0,
+      "equity_pct": 54.8763631,
+      "daily_pp": null,
+      "inception_pp": null
+    },
+    "sentiment": {
+      "target_pct": 30,
+      "equity_pct": 30.0,
+      "daily_pp": null,
+      "inception_pp": null
+    },
+    "thrust": {
+      "target_pct": 0,
+      "equity_pct": 0.0,
+      "daily_pp": null,
+      "inception_pp": null
+    }
+  }
+}
