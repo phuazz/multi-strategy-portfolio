@@ -43,21 +43,32 @@ async function run(){
       await page.evaluate(()=>{combined.expires_utc='2000-01-01T00:00:00Z';renderCombined();});
       assert.match(await page.locator('#tabContent').innerText(),/Historical snapshot/);
       await page.locator('[data-tab="backtest"]').click();
-      await page.locator('#studyPlot .main-svg').first().waitFor();
+      await page.locator('#gapStudyPlot .main-svg').first().waitFor();
       const study=await page.evaluate(()=>{
         const p=document.querySelector('#studyPlot'),b=combinedStudy,w=document.documentElement.clientWidth;
         const tables=[...document.querySelectorAll('#tabContent table')];
-        const els=[...document.querySelectorAll('#tabContent p,#tabContent td,#tabContent th,#tabContent h2,#studyPlot')];
+        const els=[...document.querySelectorAll('#tabContent p,#tabContent td,#tabContent th,#tabContent h2,#tabContent .js-plotly-plot,#tabContent .xtick text,#tabContent .ytick text')];
+        const daily=b.exhibit.daily,areas=document.querySelector('#overlayStudyPlot').data;
+        const gap=document.querySelector('#gapStudyPlot').data.find(trace=>trace.name==='Drawdown gap');
+        const reconciled=daily.dates.every((day,i)=>{
+          const sentiment=daily.sentiment[i],breadth=daily.thrust[i];
+          return areas[4].x[i]===day && areas[4].y[i]===sentiment+breadth &&
+            areas[0].y[i]+areas[2].y[i]===sentiment && areas[1].y[i]+areas[3].y[i]===breadth &&
+            gap.x[i]===day && gap.y[i]===daily.gap[i];
+        });
         const prose=els.find(e=>e.tagName==='P'&&e.textContent.length>110);
         const ctx=document.createElement('canvas').getContext('2d');ctx.font=getComputedStyle(prose).font;
-        return {lines:p.data.length,points:p.data[0].x.length,expected:b.curve.dates.length,
+        return {reconciled,closes:daily.dates.length,lines:p.data.length,points:p.data[0].x.length,expected:b.curve.dates.length,
           finish:p.data[0].y.at(-1),end:b.stats.combined.end,rows:tables.map(t=>t.tBodies[0].rows.length),
           width:w,extra:document.documentElement.scrollWidth-w,over:els.filter(e=>e.getBoundingClientRect().right>w+1).length,
           minimum:Math.min(...els.map(e=>parseFloat(getComputedStyle(e).fontSize))),
           chars:Math.round(prose.clientWidth*62/ctx.measureText('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789').width)};
       });
       assert.equal(study.lines,3);assert.equal(study.points,study.expected);assert.ok(Math.abs(study.finish-study.end)<.00001);
-      assert.deepEqual(study.rows,[5,4]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
+      assert.ok(study.reconciled);assert.equal(study.closes,2019);
+      const copy=await page.locator('#tabContent').innerText();
+      for(const label of ['8.1 basis points a year','0.58 pp','4 of 5','2 of 5','13.79 pp','3.96 pp'])assert.ok(copy.includes(label),label);
+      assert.deepEqual(study.rows,[5,4,2]);assert.equal(study.width,width);assert.equal(study.extra,0);assert.equal(study.over,0);
       assert.ok(study.minimum>=11);console.log('backtest',JSON.stringify(study));
       assert.deepEqual(errors,[]);
       console.log(JSON.stringify(metrics));

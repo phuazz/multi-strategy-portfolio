@@ -626,19 +626,63 @@ async function renderModelStudy(){
     finally{studyLoading=false;}
     if(state.tab!=='backtest')return;
   }
-  const b=combinedStudy,s=b.stats,a=b.attribution,names={combined:'Combined model',core:'Breadth ETF core',matched:'Core + constant overlay',sentiment:'Core + Crowd Sentiment',sentiment_matched:'Core + sentiment + constant breadth substitute'};
+  const b=combinedStudy,s=b.stats,a=b.attribution,e=b.exhibit;
+  if(!e){el.textContent='The revised backtest data is loading. Refresh the page to load the current exhibit.';return;}
   const dates=fmtDate(b.start)+' to '+fmtDate(b.end),f=x=>num(x,2)+'%';
-  const rows=['combined','core','matched','sentiment','sentiment_matched'].map(k=>'<tr><td>'+names[k]+'</td><td>'+f(s[k].cagr)+'</td><td>'+f(s[k].mean)+'</td><td>'+f(s[k].dd)+'</td></tr>').join('');
-  el.innerHTML='<section class="card"><h2 class="card-title">Growth of 100 after modelled costs</h2><p class="combined-note">'+dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the constant overlay.</p><div id="studyPlot" aria-label="Growth of 100 for combined model, core and exposure-matched control"></div><p class="combined-note">Opening, month-end and final marks. The comparison table uses every US session.</p></section>'+
-    '<section class="card"><h2 class="card-title">Return and equity exposure</h2><table class="tbl combined-table"><thead><tr><th>Portfolio</th><th>Net CAGR</th><th>Average equity</th><th>Max drawdown</th></tr></thead><tbody>'+rows+'</tbody></table><p class="combined-note">The constant overlay requests '+num(b.matched_request,2)+'% of NAV. Both controls use the same funding, trading costs, reset dates and risk limits as the combined book. Constant sizes were fitted over the full sample.</p></section>'+
-    '<section class="card"><h2 class="card-title">Contribution to cumulative portfolio return</h2><table class="tbl combined-table"><thead><tr><th>Strategy</th><th>Return contribution (pp)</th></tr></thead><tbody>'+Object.entries(combinedNames).map(([k,name])=>'<tr><td>'+name+'</td><td>'+num(a[k],2)+'</td></tr>').join('')+'<tr><td>Combined return</td><td>'+num(s.combined.end-100,2)+'</td></tr></tbody></table><p class="combined-note">Net profit per 100 of starting capital. The core also earns returns on reinvested overlay profits. Holding sentiment active and matching average equity, breadth timing added '+num(100*(s.combined.cagr-s.sentiment_matched.cagr),1)+' basis points annually across '+b.events+' breadth episodes.</p></section>'+
-    '<section class="card"><h2 class="card-title">Basis of comparison</h2><p class="combined-note">Official Breadth ETF core NAV, reconstructed historical core holdings, the published weekly Crowd Sentiment series and the five-month US breadth rule. Core NAV carries its published cost assumptions. Overlay trades cost 10 bp one way. Futures financing uses the Treasury bill return plus 50 bp annually. Core and bill marks carry forward on '+b.core_carry+' US sessions without a published mark. This simulation precedes the forward combined account.</p></section>';
-  const evidence=document.createElement('p');
-  evidence.className='combined-note';
-  evidence.textContent='Against the same full-period breadth substitute, the annual advantage was '+num(b.breadth_split_bp[0],1)+' bp in the first half and '+num(b.breadth_split_bp[1],1)+' bp in the second, split at '+fmtDate(b.midpoint)+'. The five episodes were previously studied.';
-  el.querySelectorAll('section')[2].append(evidence);
+  const fixed=num(e.constant_request,2)+'%',both=num(b.matched_request,2)+'%';
+  const names={core:'Breadth ETF core',combined:'Combined model',sentiment:'Core + Crowd Sentiment',
+    matched:'Core + fixed '+both,sentiment_matched:'Core + Crowd Sentiment + fixed '+fixed};
+  const card=(title,body)=>'<section class="card"><h2 class="card-title">'+title+'</h2>'+body+'</section>';
+  const note=t=>'<p class="combined-note">'+t+'</p>';
+  const table=(head,rows)=>'<table class="tbl combined-table"><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(v=>'<td>'+v+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+  const bp=100*(s.combined.cagr-s.sentiment_matched.cagr);
+  el.innerHTML=card('How the three strategies work',
+    note('<strong>Breadth ETF core.</strong> The base portfolio rotates across US sectors, asset classes, themes and European sectors.')+
+    note('<strong>Crowd Sentiment.</strong> Each week it requests extra S&amp;P 500 exposure of 0%, 30% or 60% of portfolio value according to investor sentiment.')+
+    note('<strong>Mid-term US breadth.</strong> When five US closes confirm a broad stock-market recovery, it requests up to 20% extra S&amp;P 500 exposure for five months. Each entry-to-exit interval is one signal period. There were '+b.events+' in this backtest. The core and Crowd Sentiment receive priority under the 145% target ceiling.'))+
+    card('Growth of 100 after modelled costs',note(dates+' · historical simulation. At '+f(s.combined.mean)+' average equity, the combined model earned '+f(s.combined.cagr)+' annually against '+f(s.matched.cagr)+' for the core with a fixed addition.')+'<div id="studyPlot"></div>'+note('Opening, month-end and final marks. The table uses every US close.'))+
+    card('Return and equity exposure',table(['Portfolio','Net CAGR','Average equity','Max drawdown'],['combined','core','matched','sentiment','sentiment_matched'].map(k=>[names[k],f(s[k].cagr),f(s[k].mean),f(s[k].dd)]))+
+    note('CAGR is the compounded annual growth rate. The two fixed additions were sized over the full sample to match the combined model’s average equity. All portfolios use the same funding and cost rules.'))+
+    card('Where the annual return came from',table(['Strategy','Contribution to CAGR','Net gain per 100'],Object.entries(combinedNames).map(([k,name])=>[name,num(e.annual[k],2)+' pp',num(a[k],2)]).concat([['Combined model',f(s.combined.cagr),num(s.combined.end-100,2)]]))+
+    note('Daily net strategy returns are linked through time. The contributions add to portfolio CAGR before rounding. The last column shows cumulative profit per 100 of starting capital.'))+
+    card('How overlay profits accumulated',note(dates+' · daily net profit per 100 of opening portfolio value. Gains stack above zero and losses below. The line is the sum of both overlays.')+'<div id="overlayStudyPlot" aria-label="Cumulative net profits of both overlays"></div>')+
+    card('What did timing US breadth add?',note('Both portfolios kept the core and Crowd Sentiment. Using the five-month US breadth signal earned <strong>'+f(s.combined.cagr)+'</strong> annually. Requesting a fixed '+fixed+' extra equity throughout earned <strong>'+f(s.sentiment_matched.cagr)+'</strong>. Both averaged '+f(s.combined.mean)+' equity.')+
+    note('<strong>'+num(bp,1)+' basis points a year</strong> is the difference between the two unrounded CAGRs. Page 3 of the report rounds this to '+num(bp/100,2)+' percentage points. The '+num(e.annual.thrust,2)+' pp on the attribution table is US breadth’s share of total CAGR.')+
+    note('Against the same fixed addition, the annual advantage was '+num(b.breadth_split_bp[0],1)+' bp in the first half and '+num(b.breadth_split_bp[1],1)+' bp in the second. The halves meet on '+fmtDate(b.midpoint)+'.'))+
+    (e.signal_periods?card('What happened after a US breadth signal?',
+      note('<strong>During the five months of extra equity.</strong> The US breadth portfolio earned more in '+e.signal_periods.during_wins+' of '+e.signal_periods.count+' signal periods. The comparison portfolio kept its fixed '+fixed+' addition. During those five months the US breadth portfolio generally had more money exposed to equities.')+
+      note('<strong>Over the full year after each entry.</strong> Giving each portfolio the same average equity for that year changed the result. Adding more for five months beat keeping a smaller addition all year in '+e.signal_periods.year_wins+' of '+e.signal_periods.count+' cases. The smaller addition continued to earn market returns after the five-month position ended.')):'')+
+    card('How much did the drawdowns differ?',note(dates+' · drawdown measures how far a portfolio is below its previous closing high. Above zero, the US breadth signal portfolio was closer to its high. Below zero, the fixed '+fixed+' portfolio was closer.')+
+    '<div id="gapStudyPlot" aria-label="Daily difference between the two drawdowns"></div>'+
+    note('The drawdowns were within half a percentage point on '+num(e.within_half,1)+'% of '+e.n.toLocaleString('en-US')+' closes.')+
+    table(['Largest gaps','With US breadth','With fixed addition','Gap (pp)'],e.drawdown_extremes.map(r=>[fmtDate(r.date),f(r.timed),f(r.constant),(r.gap>0?'+':'')+num(r.gap,2)])))+
+    card('Basis of comparison',note('Official Breadth ETF core NAV, reconstructed holdings, public Crowd Sentiment and the five-month US breadth rule. Incremental trades cost 10 bp one way. Futures financing uses the Treasury bill return plus 50 bp annually. The last core and bill marks carried forward on '+b.core_carry+' US sessions. The simulation precedes the forward combined account.'));
   const traces=[['combined','#176c53','solid'],['matched','#a35c16','dash'],['core','#344968','solid']].map(([k,c,d])=>({x:b.curve.dates,y:b.curve[k],name:names[k],mode:'lines',line:{color:c,width:2.3,dash:d},hovertemplate:'%{y:.2f}<extra>%{fullData.name}</extra>'}));
-  Plotly.newPlot('studyPlot',traces,baseLayout({height:365,margin:{t:12,b:92,l:53,r:12},showlegend:true,legend:{orientation:'h',x:0,y:-.19,font:{size:11}},xaxis:{type:'date',tickformat:'%Y',nticks:innerWidth<600?5:9},yaxis:{title:'NAV · start 100',gridcolor:'#ededea'}}),PLOT_CFG);
+  const layout=title=>baseLayout({height:365,margin:{t:20,b:90,l:60,r:12},showlegend:true,legend:{orientation:'h',x:0,y:-.2,font:{size:11}},xaxis:{type:'date',tickformat:'%Y',hoverformat:'%d %b %Y',nticks:innerWidth<600?5:9},yaxis:{title,gridcolor:'#ededea',zerolinecolor:'#6e7882'}});
+  Plotly.newPlot('studyPlot',traces,layout('NAV · start 100'),PLOT_CFG);
+  const daily=e.daily,areas=[];
+  for(const sign of [1,-1]){
+    for(const [key,label,col] of [['sentiment','Crowd Sentiment','#91c4b8'],['thrust','US breadth','#db9c68']]){
+      areas.push({x:daily.dates,y:daily[key].map(v=>sign*Math.max(sign*v,0)),name:label,
+        mode:'lines',stackgroup:String(sign),line:{width:0,simplify:false},fillcolor:col,legendgroup:key,showlegend:sign===1,hoverinfo:'skip'});
+    }
+  }
+  areas.push({x:daily.dates,y:daily.sentiment.map((v,i)=>v+daily.thrust[i]),name:'Net overlays',mode:'lines',
+    customdata:daily.sentiment.map((v,i)=>[v,daily.thrust[i]]),line:{color:'#25476b',width:1.6,simplify:false},
+    hovertemplate:'Crowd Sentiment %{customdata[0]:.2f}<br>US breadth %{customdata[1]:.2f}<br>Net overlays %{y:.2f}<extra></extra>'});
+  const overlayLayout=layout('Net gain per 100');
+  overlayLayout.legend.itemclick=false;overlayLayout.legend.itemdoubleclick=false;
+  Plotly.newPlot('overlayStudyPlot',areas,overlayLayout,PLOT_CFG);
+  const riskLayout=layout('Drawdown gap (pp)');
+  riskLayout.showlegend=false;riskLayout.margin.b=45;
+  const risk=[{x:daily.dates,y:daily.gap,name:'Drawdown gap',mode:'lines',line:{color:'#25476b',width:1.3,simplify:false},hovertemplate:'%{y:+.2f} pp<extra></extra>'}];
+  for(const r of e.drawdown_extremes){
+    risk.push({x:[r.date],y:[r.gap],mode:'markers+text',text:[(r.gap>0?'+':'')+num(r.gap,2)+' pp'],
+      textposition:r.gap>0?'top right':'bottom left',marker:{color:r.gap>0?'#176c53':'#a35c16',size:7},textfont:{size:12},hoverinfo:'skip'});
+  }
+  const gapBound=Math.ceil(2*Math.max(...e.drawdown_extremes.map(r=>Math.abs(r.gap))))/2+.45;
+  riskLayout.yaxis.range=[-gapBound,gapBound];
+  Plotly.newPlot('gapStudyPlot',risk,riskLayout,PLOT_CFG);
 }
 function renderTabBar(){
   document.getElementById('tabBar').innerHTML = TABS.map(([k,label])=>
