@@ -254,3 +254,11 @@ delivery. The local Codex email schedule is paused to prevent duplicate delivery
 
 - [breadth-thrust-etf](https://github.com/phuazz/breadth-thrust-etf) — the strategy engine (upstream source).
 - [DESIGN.md](DESIGN.md) — target architecture for the monitor as a multi-strategy valuation layer (engines generate, the monitor values), and the contract each engine must publish. Proposal; the thin-renderer path above remains production until it lands.
+
+
+The capture check keeps a dashboard-only historical price or FX gap visible in
+Data Health. The workflow emails each newly missing observation and records it in
+`ops/capture_warnings.json` after the mail step succeeds. Resolved observations
+leave the receipt so a recurrence warns again. A late valuation, stale book or
+unclassified warning retains its normal alert path. The initial receipt records
+the Singapore FX observation already reported by monitor run 45777620938.

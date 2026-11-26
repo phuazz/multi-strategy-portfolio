@@ -23,6 +23,7 @@ plain ASCII (local consoles may not be UTF-8).
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -31,7 +32,7 @@ from pathlib import Path
 
 # Allow importing sibling scripts/ modules.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import ACTIVE_PORTFOLIO_IDS, dataset_path  # noqa: E402
+from config import ACTIVE_PORTFOLIO_IDS, ROOT, dataset_path  # noqa: E402
 from nyse_sessions import last_completed_session, sessions_behind  # noqa: E402
 from portfolio_freshness import evaluate_book  # noqa: E402
 
@@ -59,7 +60,7 @@ def evaluate_dataset(blob: dict, expected: date, now_utc: datetime | None = None
     book = evaluate_book(meta.get("portfolio_anchor"), meta.get("strategy_asOf"),
                          now_utc or datetime.combine(expected, time.max, timezone.utc))
 
-    if lag >= 1 or health_level != "ok" or book["level"] != "ok":
+    if live_date != expected or health_level != "ok" or book["level"] != "ok":
         status = "warn"
     else:
         status = "ok"
@@ -69,6 +70,23 @@ def evaluate_dataset(blob: dict, expected: date, now_utc: datetime | None = None
                          f"behind expected {expected.isoformat()}; baked health "
                          f"level '{health_level}'; portfolio coverage {book['asOf']}, "
                          f"required core fill {book['expected']} ({book['level']})")}
+
+
+def alert_decision(blob, verdict, expected, acknowledged):
+    """Return whether to email, the next receipt, and newly observed historical gaps."""
+    if verdict["status"] == "ok":
+        return False, [], []
+    health = blob.get("health", {})
+    gaps = health.get("dashboard_only_history_gaps")
+    if (verdict["status"] != "warn" or verdict.get("book_level") != "ok"
+            or blob.get("meta", {}).get("live_asOf") != expected.isoformat()
+            or health.get("level") != "warn" or not health.get("dashboard_only_history_warnings")
+            or health.get("consistency_ok") is not True or health.get("reconcile_ok") is not True
+            or not isinstance(gaps, list) or not gaps
+            or not all(isinstance(g, str) and g for g in gaps)):
+        return verdict["status"] == "warn", acknowledged, []
+    added = sorted(set(gaps) - set(acknowledged))
+    return bool(added), sorted(set(gaps)), added
 
 
 def write_github_output(values: dict[str, str], detail: str) -> None:
@@ -86,6 +104,13 @@ def write_github_output(values: dict[str, str], detail: str) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--receipt-candidate", type=Path,
+                        help="write proposed acknowledgements for the workflow to accept after delivery")
+    candidate = parser.parse_args().receipt_candidate
+    receipt = ROOT / "ops" / "capture_warnings.json"
+    acknowledged = json.loads(receipt.read_text(encoding="utf-8")) if receipt.exists() else {}
+    proposed = dict(acknowledged)
     now = datetime.now(timezone.utc)
     expected = last_completed_session(now)
     results = []
@@ -94,9 +119,22 @@ def main() -> int:
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))
             verdict = evaluate_dataset(blob, expected, now)
+            known = acknowledged.get(pid, [])
+            if not isinstance(known, list) or not all(isinstance(g, str) for g in known):
+                raise ValueError("invalid capture-warning receipt")
+            notify, remaining, added = alert_decision(blob, verdict, expected, known)
+            verdict.update(notify=notify, added=added)
+            if remaining:
+                proposed[pid] = remaining
+            else:
+                proposed.pop(pid, None)
+            if added:
+                verdict["evidence"] += "; newly observed historical gaps: " + ", ".join(added)
+            elif verdict["status"] == "warn" and not notify:
+                verdict["evidence"] += "; historical gaps already reported"
         except Exception as exc:
-            verdict = {"status": "fail",
-                       "evidence": f"unreadable dataset {path.name}: {exc}"}
+            verdict = {"status": "fail", "notify": False, "added": [],
+                       "evidence": f"capture check failed for {path.name}: {exc}"}
         verdict["portfolio"] = pid
         results.append(verdict)
 
@@ -112,8 +150,11 @@ def main() -> int:
     flagged = [r["portfolio"] for r in results if r["status"] != "ok"]
     summary = (f"capture {worst}: {', '.join(flagged)}" if flagged
                else "capture ok")
+    if candidate and worst != "fail":
+        candidate.write_text(json.dumps(proposed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_github_output(
-        {"capture_warn": "true" if worst == "warn" else "false",
+        {"capture_warn": "true" if worst == "warn" and any(r["notify"] for r in results) else "false",
+         "new_history_gap": "true" if any(r["added"] for r in results) else "false",
          "capture_status": worst, "summary": summary},
         detail,
     )

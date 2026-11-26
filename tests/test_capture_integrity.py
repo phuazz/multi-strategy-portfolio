@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from check_capture_integrity import evaluate_dataset
+from check_capture_integrity import alert_decision, evaluate_dataset
 
 EXPECTED = date(2026, 7, 2)  # Thu — last completed session in the fixtures
 
@@ -76,3 +76,42 @@ def test_legacy_dataset_without_book_provenance_cannot_pass():
     blob = _blob("2026-11-02")
     del blob["meta"]["portfolio_anchor"]
     assert evaluate_dataset(blob, date(2026, 11, 2))["book_level"] == "stale"
+
+def test_historical_receipts_track_exact_dates_and_observation_types():
+    fx = "STI FX SGDUSD=X 2019-05-22"
+    price = "STI price ES3.SI 2019-05-22"
+    blob = _blob("2026-07-02", "warn")
+    blob["health"].update(consistency_ok=True, reconcile_ok=True,
+                          dashboard_only_history_warnings=["STI"],
+                          dashboard_only_history_gaps=[fx])
+    verdict = evaluate_dataset(blob, EXPECTED)
+    assert verdict["status"] == "warn"
+    assert alert_decision(blob, verdict, EXPECTED, [fx]) == (False, [fx], [])
+    assert alert_decision(blob, verdict, EXPECTED, []) == (True, [fx], [fx])
+    blob["health"]["dashboard_only_history_gaps"] = [price]
+    assert alert_decision(blob, verdict, EXPECTED, [fx]) == (True, [price], [price])
+    assert alert_decision(blob, verdict, EXPECTED, [fx, price]) == (False, [price], [])
+    blob["health"]["level"] = "ok"
+    assert alert_decision(blob, evaluate_dataset(blob, EXPECTED), EXPECTED, [price]) == (False, [], [])
+
+
+def test_history_receipt_cannot_silence_current_or_unclassified_alerts():
+    gap = "STI FX SGDUSD=X 2019-05-22"
+    blob = _blob("2026-07-02", "warn")
+    blob["health"].update(consistency_ok=True, reconcile_ok=True,
+                          dashboard_only_history_warnings=["STI"], dashboard_only_history_gaps=[gap])
+    def notify():
+        return alert_decision(blob, evaluate_dataset(blob, EXPECTED), EXPECTED, [gap])[0]
+    for field in ("consistency_ok", "reconcile_ok"):
+        blob["health"][field] = False
+        assert notify()
+        blob["health"][field] = True
+    for late_or_future in ("2026-07-01", "2026-07-06"):
+        blob["meta"]["live_asOf"] = late_or_future
+        assert notify()
+    blob["meta"]["live_asOf"] = "2026-07-02"
+    blob["meta"]["portfolio_anchor"] = "2026-06-15"
+    assert notify()
+    blob["meta"]["portfolio_anchor"] = "2026-07-02"
+    del blob["health"]["dashboard_only_history_gaps"]
+    assert notify()
