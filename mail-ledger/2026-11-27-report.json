@@ -1,5 +1,5 @@
 {
-  "status": "sending",
+  "status": "sent",
   "attempted_at_utc": "2026-11-28T03:58:55.945825+00:00",
   "content_sha256": "47e5e89b1297065b21a508fff60a3140dfc70730198b1ac808a34b75294fb790",
   "run_id": "46105302449",
@@ -9,5 +9,6 @@
     "weekly": "a38452000b53eabed160e49387f00126a2139592",
     "last": "a38452000b53eabed160e49387f00126a2139592",
     "unavailable": false
-  }
+  },
+  "accepted_at_utc": "2026-11-28T03:59:19.206806+00:00"
 }
